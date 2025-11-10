@@ -1,14 +1,189 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
-  </head>
-
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shape Design Editor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Shape Design Editor</h1>
+            <div class="toolbar">
+                <div class="shape-selector-container">
+                    <button id="toggleShapes" class="toggle-btn" title="Toggle Shape Palette">
+                        <span class="toggle-icon">▼</span> Shapes
+                    </button>
+                    <div id="shapeSelector" class="shape-selector expanded">
+                        <div class="category-section">
+                            <div class="category-header-text">-- Basic Shapes --</div>
+                            <div class="category-shapes">
+                                <button class="shape-btn active" data-shape="rectangle" title="Rectangle">▭</button>
+                                <button class="shape-btn" data-shape="circle" title="Circle">○</button>
+                                <button class="shape-btn" data-shape="ellipse" title="Ellipse">◯</button>
+                                <button class="shape-btn" data-shape="square" title="Square">■</button>
+                                <button class="shape-btn" data-shape="rounded-rect" title="Rounded Rectangle">▢</button>
+                            </div>
+                        </div>
+                        <div class="category-section">
+                            <div class="category-header-text">-- Polygons --</div>
+                            <div class="category-shapes">
+                                <button class="shape-btn" data-shape="diamond" title="Diamond"></button>
+                                <button class="shape-btn" data-shape="pentagon" title="Pentagon"></button>
+                                <button class="shape-btn" data-shape="hexagon" title="Hexagon"></button>
+                                <button class="shape-btn" data-shape="octagon" title="Octagon"></button>
+                                <button class="shape-btn" data-shape="parallelogram" title="Parallelogram"></button>
+                                <button class="shape-btn" data-shape="trapezoid" title="Trapezoid"></button>
+                            </div>
+                        </div>
+                        <div class="category-section">
+                            <div class="category-header-text">-- Stars & Banners --</div>
+                            <div class="category-shapes">
+                                <button class="shape-btn" data-shape="star" title="Star"></button>
+                                <button class="shape-btn" data-shape="star-4" title="4-Point Star"></button>
+                                <button class="shape-btn" data-shape="star-6" title="6-Point Star"></button>
+                                <button class="shape-btn" data-shape="burst" title="Burst"></button>
+                                <button class="shape-btn" data-shape="banner" title="Banner"></button>
+                            </div>
+                        </div>
+                        <div class="category-section">
+                            <div class="category-header-text">-- Arrows --</div>
+                            <div class="category-shapes">
+                                <button class="shape-btn" data-shape="arrow-right" title="Arrow Right"></button>
+                                <button class="shape-btn" data-shape="arrow-left" title="Arrow Left"></button>
+                                <button class="shape-btn" data-shape="arrow-up" title="Arrow Up"></button>
+                                <button class="shape-btn" data-shape="arrow-down" title="Arrow Down"></button>
+                                <button class="shape-btn" data-shape="arrow-curved" title="Curved Arrow"></button>
+                            </div>
+                        </div>
+                        <div class="category-section">
+                            <div class="category-header-text">-- Flowchart --</div>
+                            <div class="category-shapes">
+                                <button class="shape-btn" data-shape="flowchart-process" title="Process">▭</button>
+                                <button class="shape-btn" data-shape="flowchart-decision" title="Decision"></button>
+                                <button class="shape-btn" data-shape="flowchart-data" title="Data"></button>
+                                <button class="shape-btn" data-shape="flowchart-predefined" title="Predefined"></button>
+                                <button class="shape-btn" data-shape="flowchart-internal-storage" title="Internal Storage"></button>
+                            </div>
+                        </div>
+                        <div class="category-section">
+                            <div class="category-header-text">-- Callouts --</div>
+                            <div class="category-shapes">
+                                <button class="shape-btn" data-shape="callout-rect" title="Rectangular Callout">💬</button>
+                                <button class="shape-btn" data-shape="callout-rounded" title="Rounded Callout">💭</button>
+                                <button class="shape-btn" data-shape="callout-cloud" title="Cloud Callout"></button>
+                                <button class="shape-btn" data-shape="callout-oval" title="Oval Callout">💬</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button id="clearCanvas" class="btn btn-danger">Clear Canvas</button>
+            </div>
+        </header>
+        
+        <div class="main-content">
+            <div class="editor-panel">
+                <div id="formattingToolbar" class="formatting-toolbar" style="display: none;">
+                    <div class="toolbar-section">
+                        <div class="toolbar-group">
+                            <label for="shapeColor">Fill Color:</label>
+                            <input type="color" id="shapeColor" class="toolbar-color" value="#3498db" title="Fill Color">
+                        </div>
+                        <div class="toolbar-group">
+                            <label for="borderColor">Border Color:</label>
+                            <input type="color" id="borderColor" class="toolbar-color" value="#2980b9" title="Border Color">
+                        </div>
+                        <div class="toolbar-group">
+                            <label for="borderWidth">Border Width:</label>
+                            <input type="number" id="borderWidth" class="toolbar-input" min="0" max="20" value="2">
+                        </div>
+                        <div class="toolbar-group">
+                            <label for="opacity">Opacity:</label>
+                            <input type="range" id="opacity" class="toolbar-range" min="0" max="100" value="100">
+                            <span id="opacityValue">100%</span>
+                        </div>
+                    </div>
+                    <div class="toolbar-section toolbar-separator" id="textFormattingSection" style="display: none;">
+                        <div class="toolbar-group">
+                            <label for="textFontFamily">Font:</label>
+                            <select id="textFontFamily" class="toolbar-select">
+                                <option value="Arial">Arial</option>
+                                <option value="Helvetica">Helvetica</option>
+                                <option value="Times New Roman">Times New Roman</option>
+                                <option value="Courier New">Courier New</option>
+                                <option value="Verdana">Verdana</option>
+                                <option value="Georgia">Georgia</option>
+                                <option value="Palatino">Palatino</option>
+                                <option value="Comic Sans MS">Comic Sans MS</option>
+                                <option value="Impact">Impact</option>
+                                <option value="Trebuchet MS">Trebuchet MS</option>
+                            </select>
+                        </div>
+                        <div class="toolbar-group">
+                            <label for="textFontSize">Size:</label>
+                            <input type="number" id="textFontSize" class="toolbar-input" min="8" max="72" value="16">
+                        </div>
+                        <div class="toolbar-group">
+                            <label for="textColor">Color:</label>
+                            <input type="color" id="textColor" class="toolbar-color" value="#000000" title="Text Color">
+                        </div>
+                        <div class="toolbar-group">
+                            <button id="textBoldBtn" class="toolbar-btn" title="Bold (Ctrl+B)">
+                                <strong>B</strong>
+                            </button>
+                            <button id="textItalicBtn" class="toolbar-btn" title="Italic (Ctrl+I)">
+                                <em>I</em>
+                            </button>
+                        </div>
+                        <div class="toolbar-group toolbar-separator">
+                            <label>Align:</label>
+                            <button id="textAlignLeftBtn" class="toolbar-btn align-btn" title="Align Left" data-align="left">
+                                ⬅
+                            </button>
+                            <button id="textAlignCenterBtn" class="toolbar-btn align-btn" title="Align Center" data-align="center">
+                                ⬌
+                            </button>
+                            <button id="textAlignRightBtn" class="toolbar-btn align-btn" title="Align Right" data-align="right">
+                                ➡
+                            </button>
+                        </div>
+                        <div class="toolbar-group">
+                            <label>Vertical:</label>
+                            <button id="textAlignTopBtn" class="toolbar-btn align-btn" title="Align Top" data-valign="top">
+                                ⬆
+                            </button>
+                            <button id="textAlignMiddleBtn" class="toolbar-btn align-btn" title="Align Middle" data-valign="middle">
+                                ⬌
+                            </button>
+                            <button id="textAlignBottomBtn" class="toolbar-btn align-btn" title="Align Bottom" data-valign="bottom">
+                                ⬇
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="canvas-container">
+                    <div id="canvas" class="canvas">
+                        <div class="canvas-hint">Select a shape and drag on the canvas to create it</div>
+                        <!-- Shapes will be added here -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="code-panel">
+                <div class="code-tabs">
+                    <button class="tab-btn active" data-tab="xml">XML</button>
+                    <button class="tab-btn" data-tab="css">CSS</button>
+                </div>
+                <div class="code-content">
+                    <textarea id="xmlCode" class="code-editor active" spellcheck="false"></textarea>
+                    <textarea id="cssCode" class="code-editor" spellcheck="false"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
 </html>
+

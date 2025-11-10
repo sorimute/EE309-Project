@@ -1,0 +1,24 @@
+{
+  "name": "shape-design-editor",
+  "version": "1.0.0",
+  "description": "A shape design editor that automatically generates XML and CSS code",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "visual-editor",
+    "design",
+    "shapes",
+    "xml",
+    "css",
+    "code-generator"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+
