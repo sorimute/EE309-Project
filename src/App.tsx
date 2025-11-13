@@ -1,5 +1,24 @@
 import { useState, useRef, useEffect } from "react";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { dracula } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import "./App.css";
+import cssIcon from "./assets/css.png";
+import htmlIcon from "./assets/html.png";
+import reactIcon from "./assets/react.svg";
+import codeIcon from "./assets/Code.png";
+import newfileIcon from "./assets/newfile.png";
+import newfolderIcon from "./assets/newfolder.png";
+import newimageIcon from "./assets/newimage.png";
+import newshapeIcon from "./assets/newshape.png";
+import newtextIcon from "./assets/newtext.png";
+import shapeColorIcon from "./assets/shapecolor.png";
+import textColorIcon from "./assets/textcolor.png";
+import strokeIcon from "./assets/stroke.svg";
+import cornerRadiusIcon from "./assets/cornerradius.svg";
+import effectsIcon from "./assets/effects.svg";
+import alignLeftIcon from "./assets/align_left.png";
+import alignCenterIcon from "./assets/align_center.png";
+import alignRightIcon from "./assets/align_right.png";
 
 interface Shape {
   id: number;
@@ -9,6 +28,12 @@ interface Shape {
   width: number;
   height: number;
   color: string;
+}
+
+interface FileItem {
+  name: string;
+  type: "file" | "folder";
+  extension: "xml" | "css" | "react";
 }
 
 function App() {
@@ -26,11 +51,127 @@ function App() {
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, shapeX: 0, shapeY: 0 });
   const [showShapeMenu, setShowShapeMenu] = useState(false);
+  const [showShapeColorMenu, setShowShapeColorMenu] = useState(false);
+  const [showTextColorMenu, setShowTextColorMenu] = useState(false);
+  const [textColor, setTextColor] = useState("#000000");
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [codeView, setCodeView] = useState<"xml" | "css" | "react">("xml");
+  const [currentFileName, setCurrentFileName] = useState<string>("React.tsx");
+  const [openedFiles, setOpenedFiles] = useState<string[]>(["React.tsx"]); // 열린 파일 목록
+  const [activeFile, setActiveFile] = useState<string>("React.tsx"); // 현재 활성화된 파일
   const canvasRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const textColorMenuRef = useRef<HTMLDivElement>(null);
+  const shapeColorMenuRef = useRef<HTMLDivElement>(null);
+
+  // 플레이스홀더 파일 목록
+  const [files] = useState<FileItem[]>([
+    { name: "Test1.xml", type: "file", extension: "xml" },
+    { name: "Test2.css", type: "file", extension: "css" },
+    { name: "React.tsx", type: "file", extension: "react" },
+  ]);
+
+  // 파일 확장자에 따라 아이콘 반환
+  const getFileIcon = (fileName: string, fileExtension?: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    
+    // extension이 react인 경우
+    if (fileExtension === "react") {
+      return reactIcon;
+    }
+    
+    // 파일명 확장자로 판단
+    switch (extension) {
+      case 'css':
+        return cssIcon;
+      case 'html':
+      case 'htm':
+        return htmlIcon;
+      case 'tsx':
+      case 'jsx':
+        return reactIcon;
+      case 'xml':
+        return codeIcon;
+      default:
+        return null;
+    }
+  };
+
+  // 파일 클릭 시 탭에 추가하거나 전환
+  const handleFileClick = (fileName: string) => {
+    setCurrentFileName(fileName);
+    setActiveFile(fileName);
+    
+    // 이미 열려있지 않으면 탭에 추가
+    if (!openedFiles.includes(fileName)) {
+      setOpenedFiles([...openedFiles, fileName]);
+    }
+  };
+
+  // 탭 클릭 시 파일 전환
+  const handleTabClick = (fileName: string) => {
+    setCurrentFileName(fileName);
+    setActiveFile(fileName);
+  };
+
+  // 탭 닫기
+  const handleTabClose = (e: React.MouseEvent, fileName: string) => {
+    e.stopPropagation();
+    
+    if (openedFiles.length === 1) {
+      // 마지막 탭이면 닫지 않음
+      return;
+    }
+    
+    const newOpenedFiles = openedFiles.filter(f => f !== fileName);
+    setOpenedFiles(newOpenedFiles);
+    
+    // 닫은 파일이 활성화된 파일이면 다른 파일로 전환
+    if (activeFile === fileName) {
+      const newActiveFile = newOpenedFiles[newOpenedFiles.length - 1];
+      setActiveFile(newActiveFile);
+      setCurrentFileName(newActiveFile);
+    }
+  };
+
+  // XML 코드 생성
+  const generateXML = () => {
+    if (shapes.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
+    
+    const xmlParts = shapes.map((shape, index) => {
+      return `  <shape id="${shape.id}" type="${shape.type}">
+    <position x="${shape.x}" y="${shape.y}" />
+    <size width="${shape.width}" height="${shape.height}" />
+    <style color="${shape.color}" />
+  </shape>`;
+    });
+    
+    return `<root>\n${xmlParts.join("\n")}\n</root>`;
+  };
+
+  // CSS 코드 생성
+  const generateCSS = () => {
+    if (shapes.length === 0) return "/* 코드가 여기에 표시됩니다 */";
+    
+    const cssParts = shapes.map((shape) => {
+      return `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};\n  ${shape.type === "circle" ? "border-radius: 50%;" : ""}\n}`;
+    });
+    
+    return cssParts.join("\n\n");
+  };
+
+  // React 코드 생성
+  const generateReact = () => {
+    if (shapes.length === 0) return "// 코드가 여기에 표시됩니다";
+    
+    const reactParts = shapes.map((shape) => {
+      return `  <div\n    className="shape-${shape.id}"\n    style={{\n      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',\n      ${shape.type === "circle" ? "borderRadius: '50%'," : ""}\n    }}\n  />`;
+    });
+    
+    return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
+  };
 
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
@@ -38,16 +179,67 @@ function App() {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowShapeMenu(false);
       }
+      if (shapeColorMenuRef.current && !shapeColorMenuRef.current.contains(event.target as Node)) {
+        setShowShapeColorMenu(false);
+      }
+      if (textColorMenuRef.current && !textColorMenuRef.current.contains(event.target as Node)) {
+        setShowTextColorMenu(false);
+      }
     };
 
-    if (showShapeMenu) {
+    if (showShapeMenu || showShapeColorMenu || showTextColorMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showShapeMenu]);
+  }, [showShapeMenu, showShapeColorMenu, showTextColorMenu]);
+
+  // 드롭다운이 열릴 때 자동으로 color input 클릭
+  useEffect(() => {
+    if (showShapeColorMenu) {
+      // 약간의 지연을 두고 color input을 클릭하여 브라우저 색상 선택 팝업 열기
+      const timer = setTimeout(() => {
+        const colorInput = document.getElementById('shape-color-input-in-dropdown') as HTMLInputElement;
+        if (colorInput) {
+          colorInput.click();
+        }
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, [showShapeColorMenu]);
+
+  // Text Color 드롭다운이 열릴 때 자동으로 color input 클릭
+  useEffect(() => {
+    if (showTextColorMenu) {
+      // 약간의 지연을 두고 color input을 클릭하여 브라우저 색상 선택 팝업 열기
+      const timer = setTimeout(() => {
+        const colorInput = document.getElementById('text-color-input-in-dropdown') as HTMLInputElement;
+        if (colorInput) {
+          colorInput.click();
+        }
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, [showTextColorMenu]);
+
+  // activeFile 변경 시 확장자에 따라 codeView 자동 설정
+  useEffect(() => {
+    const file = files.find(f => f.name === activeFile);
+    const extension = activeFile.split('.').pop()?.toLowerCase();
+    
+    if (file?.extension === "react" || extension === "tsx" || extension === "jsx") {
+      setCodeView("react");
+    } else if (file?.extension === "css" || extension === "css") {
+      setCodeView("css");
+    } else if (file?.extension === "xml" || extension === "xml") {
+      setCodeView("xml");
+    } else {
+      // 기본값은 xml
+      setCodeView("xml");
+    }
+  }, [activeFile, files]);
 
   // Delete 키로 도형 삭제, 화살표 키로 도형 이동
   useEffect(() => {
@@ -98,6 +290,12 @@ function App() {
     // 메뉴가 열려있으면 닫기
     if (showShapeMenu) {
       setShowShapeMenu(false);
+    }
+    if (showShapeColorMenu) {
+      setShowShapeColorMenu(false);
+    }
+    if (showTextColorMenu) {
+      setShowTextColorMenu(false);
     }
     
     // 도형이나 리사이즈 핸들을 클릭한 경우 무시
@@ -162,11 +360,12 @@ function App() {
     y?: number
   ) => {
     if (selectedShape) {
-      const newColor = color ?? shapeColor;
-      const newWidth = width ?? shapeWidth;
-      const newHeight = height ?? shapeHeight;
-      const newX = x ?? shapeX;
-      const newY = y ?? shapeY;
+      // 선택된 도형의 현재 값을 기본값으로 사용 (state가 아닌 실제 도형 데이터 사용)
+      const newColor = color ?? selectedShape.color;
+      const newWidth = width ?? selectedShape.width;
+      const newHeight = height ?? selectedShape.height;
+      const newX = x ?? selectedShape.x;
+      const newY = y ?? selectedShape.y;
 
       const updatedShape = {
         ...selectedShape,
@@ -183,6 +382,12 @@ function App() {
         )
       );
       setSelectedShape(updatedShape);
+      // state도 업데이트하여 UI 동기화
+      setShapeColor(newColor);
+      setShapeWidth(newWidth);
+      setShapeHeight(newHeight);
+      setShapeX(newX);
+      setShapeY(newY);
     }
   };
 
@@ -378,118 +583,268 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex bg-gray-100">
-      {/* 왼쪽 패널: 파일 목록 */}
-      <div className="w-48 bg-gray-200 p-4 border-r border-gray-300">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">
-          연 파일 내의 목록을 보는 곳
-        </h2>
-        <div className="space-y-1">
-          {shapes.map((shape) => (
-            <div
-              key={shape.id}
-              className={`p-2 rounded text-sm flex items-center justify-between ${
-                selectedShape?.id === shape.id
-                  ? "bg-blue-500 text-white"
-                  : "bg-white hover:bg-gray-100"
-              }`}
-            >
+    <div className="h-screen flex bg-black dark:bg-black">
+      {/* 왼쪽 패널: 파일 탐색기 (Cursor 스타일) */}
+      <div className="w-64 bg-black dark:bg-black border-r border-pink-300/30 dark:border-pink-300/20/30 flex flex-col">
+        <div className="px-4 py-2 border-b border-pink-300/30 dark:border-pink-300/20/30 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-white dark:text-white">
+            Current Directory
+          </h2>
+          <div className="flex gap-1">
+            <button className="p-1 hover:bg-pink-300 dark:hover:bg-pink-300 rounded text-white hover:text-black transition-colors" title="Add File">
+              <img src={newfileIcon} alt="New File" className="w-4 h-4" />
+            </button>
+            <button className="p-1 hover:bg-pink-300 dark:hover:bg-pink-300 rounded text-white hover:text-black transition-colors" title="Add Folder">
+              <img src={newfolderIcon} alt="New Folder" className="w-4 h-4" />
+            </button>
+            <button className="p-1 hover:bg-pink-300 dark:hover:bg-pink-300 rounded text-white hover:text-black transition-colors" title="Refresh">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-2">
+          <div className="space-y-0.5">
+            {files.map((file, index) => (
               <div
-                onClick={() => handleShapeClick(shape)}
-                className="flex-1 cursor-pointer"
+                key={index}
+                onClick={() => handleFileClick(file.name)}
+                className={`px-2 py-1.5 rounded text-sm flex items-center gap-2 cursor-pointer ${
+                  activeFile === file.name
+                    ? "bg-pink-300 dark:bg-pink-300 text-black"
+                    : "text-white dark:text-white hover:bg-pink-300 dark:hover:bg-pink-300 hover:text-black"
+                }`}
               >
-                {shape.type} {shape.id}
+                {file.type === "folder" ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                  </svg>
+                ) : (
+                  (() => {
+                    const icon = getFileIcon(file.name, file.extension);
+                    return icon ? (
+                      <img src={icon} alt={file.name} className="w-auto h-4" />
+                    ) : (
+                      <span className="text-xs">{"<>"}</span>
+                    );
+                  })()
+                )}
+                <span className="flex-1 truncate">{file.name}</span>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShapes(shapes.filter((s) => s.id !== shape.id));
-                  if (selectedShape?.id === shape.id) {
-                    setSelectedShape(null);
-                  }
-                }}
-                className="ml-2 p-1 hover:bg-red-500 hover:text-white rounded transition-colors"
-                title="삭제"
-              >
-                🗑️
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* 중간 패널: 미리보기 영역 */}
-      <div className="flex-1 flex flex-col bg-gray-200 border-r border-gray-300">
-        {/* 툴바 */}
-        <div className="bg-white p-3 border-b border-gray-300 flex gap-2 flex-wrap relative">
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setShowShapeMenu(!showShapeMenu)}
-              className={`px-4 py-2 rounded ${
-                pendingShapeType
-                  ? "bg-blue-600 text-white"
-                  : "bg-blue-500 text-white hover:bg-blue-600"
-              }`}
-            >
-              도형 추가버튼
+      {/* 중간 패널: 파워포인트 스타일 캔버스 */}
+      <div className="flex-1 flex flex-col bg-black dark:bg-black border-r border-pink-300/30 dark:border-pink-300/20/30">
+        {/* 상단 리본 바 */}
+        <div className="bg-black dark:bg-black border-b border-pink-300/30 dark:border-pink-300/20/30 px-4 py-3 flex items-center gap-4">
+          {/* 아이콘 버튼 그룹 */}
+          <div className="flex items-center gap-0.5">
+            {/* 텍스트 추가 버튼 */}
+            <button className="p-3 bg-black dark:bg-black rounded flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+              <img src={newtextIcon} alt="New Text" className="w-14 h-auto" />
             </button>
-            {showShapeMenu && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-10">
-                <button
-                  onClick={() => {
-                    setPendingShapeType("rectangle");
-                    setShowShapeMenu(false);
-                  }}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-100 rounded-t"
-                >
-                  사각형
+
+            {/* 도형 추가 버튼 */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowShapeMenu(!showShapeMenu)}
+                className={`p-3 rounded flex items-center justify-center ${
+                  pendingShapeType
+                    ? "bg-gray-800 dark:bg-gray-800 text-white"
+                    : "bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                }`}
+              >
+                <img src={newshapeIcon} alt="New Shape" className="w-16 h-auto" />
+              </button>
+              {showShapeMenu && (
+                <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[120px]">
+                  <button
+                    onClick={() => {
+                      setPendingShapeType("rectangle");
+                      setShowShapeMenu(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 hover:bg-gray-800 dark:hover:bg-gray-800 text-white rounded-t"
+                  >
+                    사각형
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPendingShapeType("circle");
+                      setShowShapeMenu(false);
+                    }}
+                    className="block w-full text-left px-4 py-2 hover:bg-gray-800 dark:hover:bg-gray-800 text-white rounded-b"
+                  >
+                    원
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 이미지 추가 버튼 */}
+            <button className="p-3 bg-black dark:bg-black rounded flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+              <img src={newimageIcon} alt="New Image" className="w-14 h-auto" />
+            </button>
+          </div>
+
+          {/* 구분선 */}
+          <div className="h-20 w-px bg-pink-300/30 dark:bg-pink-300/30"></div>
+
+          {/* 텍스트 편집 칸 (두 줄로 배치) */}
+          <div className="flex flex-col gap-2">
+            {/* 첫 번째 줄: Font, Size */}
+            <div className="flex items-center gap-2">
+              <select className="px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm">
+                <option className="bg-black text-white">Nanum Gothic</option>
+              </select>
+              <div className="flex items-center gap-1">
+                <button className="px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                  </svg>
                 </button>
-                <button
-                  onClick={() => {
-                    setPendingShapeType("circle");
-                    setShowShapeMenu(false);
-                  }}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-100 rounded-b"
-                >
-                  원
+                <input 
+                  type="number" 
+                  value={16} 
+                  className="w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]" 
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+                <button className="px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
                 </button>
               </div>
-            )}
+            </div>
+            {/* 두 번째 줄: 색상, Bold, 정렬 */}
+            <div className="flex items-center gap-2">
+              {/* Text Color 버튼 (아이콘 + 텍스트 + 드롭다운) */}
+              <div className="relative" ref={textColorMenuRef}>
+                <button 
+                  onClick={() => setShowTextColorMenu(!showTextColorMenu)}
+                  className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                >
+                  <img src={textColorIcon} alt="Text Color" className="w-auto h-4" />
+                  <span>Text Color</span>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showTextColorMenu && (
+                  <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3">
+                    <input
+                      id="text-color-input-in-dropdown"
+                      type="color"
+                      value={textColor}
+                      onChange={(e) => {
+                        setTextColor(e.target.value);
+                      }}
+                      className="h-32 w-full cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+              <button className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 font-bold border border-pink-300/20">B</button>
+              <div className="flex gap-1">
+                <button className="px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20">
+                  <img src={alignLeftIcon} alt="Align Left" className="w-4 h-4" />
+                </button>
+                <button className="px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20">
+                  <img src={alignCenterIcon} alt="Align Center" className="w-4 h-4" />
+                </button>
+                <button className="px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20">
+                  <img src={alignRightIcon} alt="Align Right" className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="px-4 py-2 bg-gray-100 rounded">
-            텍스트 추가버튼
-          </div>
-          <div className="px-4 py-2 bg-gray-100 rounded">
-            이미지 추가버튼
-          </div>
-          <div className="px-4 py-2 bg-gray-100 rounded">
-            텍스트 설정 구간
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">도형설정구간</span>
-            <input
-              type="color"
-              value={shapeColor}
-              onChange={(e) => {
-                const newColor = e.target.value;
-                setShapeColor(newColor);
-                if (selectedShape) {
-                  updateSelectedShape(newColor);
-                }
-              }}
-              disabled={!selectedShape}
-              className="h-8 w-16 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              title={selectedShape ? "색상 변경" : "도형을 선택해주세요"}
-            />
-          </div>
+
+          {/* 구분선 */}
+          <div className="h-20 w-px bg-pink-300/30 dark:bg-pink-300/30"></div>
+
+          {/* 도형 편집 칸 (도형 선택 시 표시) */}
+          {selectedShape && (
+            <div className="flex flex-col gap-2">
+              {/* 첫 번째 줄: Fill Color, Effects */}
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={shapeColorMenuRef}>
+                  <button 
+                    onClick={() => setShowShapeColorMenu(!showShapeColorMenu)}
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                  >
+                    <img src={shapeColorIcon} alt="Shape Color" className="w-auto h-4" />
+                    <span>Fill Color</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showShapeColorMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3">
+                      <input
+                        id="shape-color-input-in-dropdown"
+                        type="color"
+                        value={shapeColor}
+                        onChange={(e) => {
+                          const newColor = e.target.value;
+                          setShapeColor(newColor);
+                          updateSelectedShape(newColor);
+                        }}
+                        className="h-32 w-full cursor-pointer"
+                      />
+                    </div>
+                  )}
+                </div>
+                {/* Effects 버튼 */}
+                <div className="relative">
+                  <button 
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                  >
+                    <img src={effectsIcon} alt="Effects" className="w-auto h-4" />
+                    <span>Effect</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* 두 번째 줄: Stroke, Corner Radius */}
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button 
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                  >
+                    <img src={strokeIcon} alt="Stroke" className="w-auto h-4" />
+                    <span>Stroke</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Corner Radius */}
+                <div className="flex items-center gap-2">
+                  <img src={cornerRadiusIcon} alt="Corner Radius" className="w-auto h-4" />
+                  <span className="text-sm text-white dark:text-white">Corner Radius:</span>
+                  <input
+                    type="number"
+                    value={selectedShape.type === "circle" ? Math.min(shapeWidth, shapeHeight) / 2 : 0}
+                    disabled
+                    className="w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 미리보기 영역 */}
-        <div className="flex-1 p-4 overflow-auto">
-          <div className="text-sm text-gray-600 mb-2">미리보기 할수 있는 곳</div>
+        {/* 캔버스 영역 (파워포인트 스타일 - 흰색 배경) */}
+        <div className="flex-1 p-8 overflow-auto bg-black dark:bg-black">
           <div
             ref={canvasRef}
-            className="relative bg-white w-full h-full border-2 border-dashed border-gray-400"
+            className="relative bg-white w-full h-full shadow-lg"
+            style={{ cursor: pendingShapeType ? "crosshair" : "default", minHeight: "600px" }}
             onMouseMove={handleMouseMove}
             onMouseDown={handleCanvasMouseDown}
             onMouseUp={handleCanvasMouseUp}
@@ -499,7 +854,6 @@ function App() {
               }
               handleMouseUp();
             }}
-            style={{ cursor: pendingShapeType ? "crosshair" : "default" }}
           >
             {/* 드래그 미리보기 */}
             {drawPreview && (
@@ -510,8 +864,8 @@ function App() {
                   top: `${drawPreview.y}px`,
                   width: `${drawPreview.width}px`,
                   height: `${drawPreview.height}px`,
-                  border: "2px dashed #3b82f6",
-                  backgroundColor: "rgba(59, 130, 246, 0.1)",
+                  border: "2px dashed #f9a8d4",
+                  backgroundColor: "rgba(249, 168, 212, 0.2)",
                   pointerEvents: "none",
                   borderRadius: pendingShapeType === "circle" ? "50%" : "0",
                 }}
@@ -530,7 +884,7 @@ function App() {
                     width: `${shape.width}px`,
                     height: `${shape.height}px`,
                     backgroundColor: shape.color,
-                    border: isSelected ? "2px solid red" : "1px solid #ccc",
+                    border: isSelected ? "2px solid #f9a8d4" : "1px solid #f9a8d4",
                     cursor:
                       isDragging && isSelected
                         ? "grabbing"
@@ -553,8 +907,8 @@ function App() {
                           left: "-4px",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "nwse-resize",
                         }}
                       />
@@ -567,8 +921,8 @@ function App() {
                           right: "-4px",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "nesw-resize",
                         }}
                       />
@@ -581,8 +935,8 @@ function App() {
                           left: "-4px",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "nesw-resize",
                         }}
                       />
@@ -595,8 +949,8 @@ function App() {
                           right: "-4px",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "nwse-resize",
                         }}
                       />
@@ -611,8 +965,8 @@ function App() {
                           transform: "translateX(-50%)",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "ns-resize",
                         }}
                       />
@@ -626,8 +980,8 @@ function App() {
                           transform: "translateX(-50%)",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "ns-resize",
                         }}
                       />
@@ -641,8 +995,8 @@ function App() {
                           transform: "translateY(-50%)",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "ew-resize",
                         }}
                       />
@@ -656,8 +1010,8 @@ function App() {
                           transform: "translateY(-50%)",
                           width: "8px",
                           height: "8px",
-                          backgroundColor: "red",
-                          border: "1px solid white",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
                           cursor: "ew-resize",
                         }}
                       />
@@ -670,45 +1024,93 @@ function App() {
         </div>
       </div>
 
-      {/* 오른쪽 패널: 파일명 및 코드 내용 */}
-      <div className="w-80 bg-gray-200 p-4 flex flex-col">
-        <div className="bg-white rounded p-4 mb-4">
-          <div className="mb-2">
-            <h2 className="text-sm font-semibold text-gray-700">
-              지금 선택한 파일 명
-            </h2>
-          </div>
+      {/* 오른쪽 패널: 코드 에디터 */}
+      <div className="w-[480px] bg-black dark:bg-black flex flex-col">
+        {/* Code Editor 제목 (맨 위) */}
+        <div className="px-4 py-2 border-b border-pink-300/30 dark:border-pink-300/20/30">
+          <h3 className="text-sm font-semibold text-white dark:text-white">Code Editor</h3>
         </div>
 
-        <div className="bg-white rounded p-4 mb-4">
-          <div className="text-sm font-semibold text-gray-700 mb-2">
-            파일 타입
-          </div>
-          <div className="space-y-1 text-sm">
-            <label className="flex items-center">
-              <input type="checkbox" className="mr-2" />
-              html
-            </label>
-            <label className="flex items-center">
-              <input type="checkbox" className="mr-2" />
-              css
-            </label>
-            <label className="flex items-center">
-              <input type="checkbox" className="mr-2" />
-              react
-            </label>
-          </div>
+        {/* 파일 타입 체크박스 */}
+        <div className="px-4 py-2 flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-white dark:text-white cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="accent-pink-300" 
+              checked={codeView === "xml"}
+              onChange={() => setCodeView("xml")}
+            />
+            XML
+          </label>
+          <label className="flex items-center gap-2 text-sm text-white dark:text-white cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="accent-pink-300" 
+              checked={codeView === "css"}
+              onChange={() => setCodeView("css")}
+            />
+            CSS
+          </label>
+          <label className="flex items-center gap-2 text-sm text-white dark:text-white cursor-pointer">
+            <input type="checkbox" className="accent-pink-300"
+            checked={codeView === "react"}
+            onChange={() => setCodeView("react")}
+            />
+            React
+          </label>
         </div>
 
-        <div className="bg-white rounded p-4 flex-1 flex flex-col min-h-0">
-          <div className="text-sm font-semibold text-gray-700 mb-2">
-            코드 내용
-          </div>
-          <div className="text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded flex-1 overflow-auto">
-            {selectedShape
-              ? `shape: ${selectedShape.type}\ncolor: ${selectedShape.color}\nwidth: ${selectedShape.width}px\nheight: ${selectedShape.height}px\nx: ${selectedShape.x}px\ny: ${selectedShape.y}px`
-              : "코드가 여기에 표시됩니다"}
-          </div>
+        {/* 파일 탭 (여러 개 열 수 있음) */}
+        <div className="px-2 pt-1 flex items-end gap-1 overflow-x-auto">
+          {openedFiles.map((fileName) => {
+            const file = files.find(f => f.name === fileName);
+            const icon = getFileIcon(fileName, file?.extension);
+            return (
+              <div
+                key={fileName}
+                onClick={() => handleTabClick(fileName)}
+                className={`px-3 py-1 text-sm flex items-center gap-2 cursor-pointer min-w-fit ${
+                  activeFile === fileName
+                    ? "bg-[#1B0F0F] dark:bg-[#1B0F0F] text-white border-t border-pink-300"
+                    : "bg-black dark:bg-black text-white hover:bg-gray-900 dark:hover:bg-gray-900"
+                }`}
+              >
+                {icon ? (
+                  <img src={icon} alt={fileName} className="w-auto h-4" />
+                ) : (
+                  <span className="text-xs">{"<>"}</span>
+                )}
+                <span className="truncate max-w-[120px]">{fileName}</span>
+                {openedFiles.length > 1 && (
+                  <button
+                    onClick={(e) => handleTabClose(e, fileName)}
+                    className="ml-1 hover:bg-gray-700 dark:hover:bg-gray-700 rounded px-1 text-xs"
+                    title="닫기"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 코드 편집 창 */}
+        <div className="flex-1 overflow-auto -mt-px">
+          <SyntaxHighlighter
+            language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
+            style={dracula}
+            customStyle={{
+              margin: 0,
+              padding: "1rem",
+              fontSize: "0.75rem",
+              backgroundColor: "#1B0F0F",
+              height: "100%",
+            }}
+            showLineNumbers={false}
+          >
+            {codeView === "xml" ? generateXML() : codeView === "css" ? generateCSS() : generateReact()}
+          </SyntaxHighlighter>
         </div>
       </div>
     </div>

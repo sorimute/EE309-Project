@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-black text-white;
+  }
+  
+  * {
+    @apply border-pink-300;
+  }
+}
