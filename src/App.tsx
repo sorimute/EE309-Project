@@ -20,9 +20,11 @@ import alignLeftIcon from "./assets/align_left.png";
 import alignCenterIcon from "./assets/align_center.png";
 import alignRightIcon from "./assets/align_right.png";
 
+type ShapeType = "rectangle" | "roundedRectangle" | "circle" | "ellipse" | "parallelogram" | "star" | "triangle" | "diamond" | "hexagon" | "pentagon";
+
 interface Shape {
   id: number;
-  type: "rectangle" | "circle";
+  type: ShapeType;
   x: number;
   y: number;
   width: number;
@@ -37,10 +39,13 @@ interface FileItem {
   extension: "xml" | "css" | "react";
 }
 
+// 도형의 기본 색상 (프로그램에서 사용하는 핑크색)
+const DEFAULT_SHAPE_COLOR = "#f9a8d4";
+
 function App() {
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
-  const [shapeColor, setShapeColor] = useState("#3b82f6");
+  const [shapeColor, setShapeColor] = useState(DEFAULT_SHAPE_COLOR);
   const [shapeWidth, setShapeWidth] = useState(100);
   const [shapeHeight, setShapeHeight] = useState(100);
   const [shapeX, setShapeX] = useState(50);
@@ -49,7 +54,7 @@ function App() {
   const [borderRadiusInputValue, setBorderRadiusInputValue] = useState<string>("0");
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [pendingShapeType, setPendingShapeType] = useState<"rectangle" | "circle" | null>(null);
+  const [pendingShapeType, setPendingShapeType] = useState<ShapeType | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, shapeX: 0, shapeY: 0 });
@@ -76,6 +81,65 @@ function App() {
     { name: "Test2.css", type: "file", extension: "css" },
     { name: "React.tsx", type: "file", extension: "react" },
   ]);
+
+  // 도형 타입에 따른 스타일 반환 (위치 정보 제외, 모양만)
+  const getShapeStyle = (shape: Shape) => {
+    const baseStyle: React.CSSProperties = {
+      width: "100%",
+      height: "100%",
+      backgroundColor: shape.color,
+    };
+
+    // rectangle 타입의 경우 사용자가 설정한 borderRadius 사용
+    if (shape.type === "rectangle" && shape.borderRadius !== undefined) {
+      return { ...baseStyle, borderRadius: `${shape.borderRadius}px` };
+    }
+
+    switch (shape.type) {
+      case "rectangle":
+        return { ...baseStyle, borderRadius: "0" };
+      case "roundedRectangle":
+        return { ...baseStyle, borderRadius: "10px" };
+      case "circle":
+        return { ...baseStyle, borderRadius: "50%" };
+      case "ellipse":
+        return { ...baseStyle, borderRadius: "50%" };
+      case "parallelogram":
+        return {
+          ...baseStyle,
+          transform: "skew(-20deg)",
+          transformOrigin: "center",
+        };
+      case "triangle":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+          backgroundColor: "transparent",
+        };
+      case "diamond":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+        };
+      case "star":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)",
+        };
+      case "hexagon":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)",
+        };
+      case "pentagon":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+        };
+      default:
+        return baseStyle;
+    }
+  };
 
   // 파일 확장자에 따라 아이콘 반환
   const getFileIcon = (fileName: string, fileExtension?: string) => {
@@ -144,10 +208,12 @@ function App() {
   const generateXML = () => {
     if (shapes.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
     
-    const xmlParts = shapes.map((shape, index) => {
+    const xmlParts = shapes.map((shape) => {
       let borderRadiusValue: string;
-      if (shape.type === "circle") {
+      if (shape.type === "circle" || shape.type === "ellipse") {
         borderRadiusValue = "50%";
+      } else if (shape.type === "roundedRectangle") {
+        borderRadiusValue = "10";
       } else if (shape.borderRadius !== undefined) {
         borderRadiusValue = `${shape.borderRadius}`;
       } else {
@@ -167,17 +233,48 @@ function App() {
   const generateCSS = () => {
     if (shapes.length === 0) return "/* 코드가 여기에 표시됩니다 */";
     
-    const cssParts = shapes.map((shape) => {
-      let borderRadiusValue: string;
-      if (shape.type === "circle") {
-        borderRadiusValue = "50%";
-      } else if (shape.borderRadius !== undefined) {
-        borderRadiusValue = `${shape.borderRadius}px`;
+    const getShapeCSS = (shape: Shape) => {
+      let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
+      
+      // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
+      if (shape.borderRadius !== undefined && shape.type === "rectangle") {
+        css += `\n  border-radius: ${shape.borderRadius}px;`;
       } else {
-        borderRadiusValue = "0";
+        // 도형 타입에 따른 기본 스타일
+        switch (shape.type) {
+          case "roundedRectangle":
+            css += "\n  border-radius: 10px;";
+            break;
+          case "circle":
+          case "ellipse":
+            css += "\n  border-radius: 50%;";
+            break;
+          case "parallelogram":
+            css += "\n  transform: skew(-20deg);";
+            break;
+          case "triangle":
+            css += "\n  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);";
+            break;
+          case "diamond":
+            css += "\n  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);";
+            break;
+          case "star":
+            css += "\n  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);";
+            break;
+          case "hexagon":
+            css += "\n  clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);";
+            break;
+          case "pentagon":
+            css += "\n  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);";
+            break;
+        }
       }
-      return `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};\n  border-radius: ${borderRadiusValue};\n}`;
-    });
+      
+      css += "\n}";
+      return css;
+    };
+    
+    const cssParts = shapes.map((shape) => getShapeCSS(shape));
     
     return cssParts.join("\n\n");
   };
@@ -186,17 +283,48 @@ function App() {
   const generateReact = () => {
     if (shapes.length === 0) return "// 코드가 여기에 표시됩니다";
     
-    const reactParts = shapes.map((shape) => {
-      let borderRadiusValue: string;
-      if (shape.type === "circle") {
-        borderRadiusValue = "'50%'";
-      } else if (shape.borderRadius !== undefined) {
-        borderRadiusValue = `${shape.borderRadius}`;
-      } else {
-        borderRadiusValue = "0";
+    const getShapeReact = (shape: Shape) => {
+      if (shape.type === "triangle") {
+        return `  <svg\n    style={{\n      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n    }}\n  >\n    <polygon\n      points={\`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}\`}\n      fill='${shape.color}'\n    />\n  </svg>`;
       }
-      return `  <div\n    className="shape-${shape.id}"\n    style={{\n      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',\n      borderRadius: ${borderRadiusValue},\n    }}\n  />`;
-    });
+      
+      let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',`;
+      
+      // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
+      if (shape.borderRadius !== undefined && shape.type === "rectangle") {
+        style += `\n      borderRadius: ${shape.borderRadius},`;
+      } else {
+        // 도형 타입에 따른 기본 스타일
+        switch (shape.type) {
+          case "roundedRectangle":
+            style += "\n      borderRadius: '10px',";
+            break;
+          case "circle":
+          case "ellipse":
+            style += "\n      borderRadius: '50%',";
+            break;
+          case "parallelogram":
+            style += "\n      transform: 'skew(-20deg)',";
+            break;
+          case "diamond":
+            style += "\n      clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',";
+            break;
+          case "star":
+            style += "\n      clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',";
+            break;
+          case "hexagon":
+            style += "\n      clipPath: 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)',";
+            break;
+          case "pentagon":
+            style += "\n      clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',";
+            break;
+        }
+      }
+      
+      return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
+    };
+    
+    const reactParts = shapes.map((shape) => getShapeReact(shape));
     
     return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
   };
@@ -333,9 +461,15 @@ function App() {
     }
     
     // 도형이나 리사이즈 핸들을 클릭한 경우 무시
+    // (handleMouseDown에서 stopPropagation이 호출되므로 여기까지 오지 않음)
     const target = e.target as HTMLElement;
-    if (target.closest(".resize-handle") || target.style.position === "absolute") {
+    if (target.closest(".resize-handle") || target.closest(".shape-container")) {
       return;
+    }
+    
+    // 도형 추가 모드가 아닐 때 바탕을 클릭하면 선택 해제
+    if (!pendingShapeType) {
+      setSelectedShape(null);
     }
     
     // 도형 추가 모드일 때 드래그 시작
@@ -366,8 +500,11 @@ function App() {
       if (width >= 10 && height >= 10) {
         const finalWidth = Math.max(20, width);
         const finalHeight = Math.max(20, height);
-        // 원의 경우 타원이 되도록 borderRadius를 undefined로 설정 (렌더링 시 50%로 적용됨)
-        const initialBorderRadius = pendingShapeType === "circle" ? undefined : 0;
+        // 원/타원의 경우 borderRadius를 undefined로 설정 (렌더링 시 50%로 적용됨)
+        // rectangle의 경우 0으로 설정 (나중에 사용자가 조정 가능)
+        const initialBorderRadius = (pendingShapeType === "circle" || pendingShapeType === "ellipse") 
+          ? undefined 
+          : (pendingShapeType === "rectangle" ? 0 : undefined);
         const newShape: Shape = {
           id: Date.now(),
           type: pendingShapeType,
@@ -380,7 +517,7 @@ function App() {
         };
         setShapes([...shapes, newShape]);
         setSelectedShape(newShape);
-        // 원의 경우 borderRadius를 0으로 표시 (실제로는 50%로 렌더링됨)
+        // 원/타원의 경우 borderRadius를 0으로 표시 (실제로는 50%로 렌더링됨)
         setShapeBorderRadius(0);
         setBorderRadiusInputValue("0");
       }
@@ -443,6 +580,7 @@ function App() {
     }
   };
 
+<<<<<<< HEAD
   const handleShapeClick = (shape: Shape) => {
     setSelectedShape(shape);
     setShapeColor(shape.color);
@@ -455,6 +593,8 @@ function App() {
     setBorderRadiusInputValue(borderRadius.toString());
   };
 
+=======
+>>>>>>> develop
   const handleMouseDown = (e: React.MouseEvent, shape: Shape) => {
     e.stopPropagation();
     // 도형 추가 모드일 때는 도형 클릭 무시
@@ -722,25 +862,139 @@ function App() {
                 <img src={newshapeIcon} alt="New Shape" className="w-16 h-auto" />
               </button>
               {showShapeMenu && (
-                <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[120px]">
-                  <button
-                    onClick={() => {
-                      setPendingShapeType("rectangle");
-                      setShowShapeMenu(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-800 dark:hover:bg-gray-800 text-white rounded-t"
-                  >
-                    사각형
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPendingShapeType("circle");
-                      setShowShapeMenu(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-800 dark:hover:bg-gray-800 text-white rounded-b"
-                  >
-                    원
-                  </button>
+                <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[200px] max-h-[400px] overflow-y-auto">
+                  {/* Rectangles */}
+                  <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                    Rectangles
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("rectangle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Rectangle"
+                    >
+                      <div className="w-8 h-8 bg-pink-300 rounded-sm"></div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("roundedRectangle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Rounded Rectangle"
+                    >
+                      <div className="w-8 h-8 bg-pink-300 rounded"></div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("parallelogram");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Parallelogram"
+                    >
+                      <div className="w-8 h-8 bg-pink-300" style={{ transform: "skew(-20deg)" }}></div>
+                    </button>
+                  </div>
+                  
+                  {/* Circles */}
+                  <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                    Circles
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("circle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Circle"
+                    >
+                      <div className="w-8 h-8 bg-pink-300 rounded-full"></div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("ellipse");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Ellipse"
+                    >
+                      <div className="w-10 h-8 bg-pink-300 rounded-full"></div>
+                    </button>
+                  </div>
+                  
+                  {/* Polygons */}
+                  <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                    Polygons
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("triangle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Triangle"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 4,28 28,28" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("diamond");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Diamond"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 28,16 16,28 4,16" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("star");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Star"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,2 19.5,12.2 30,12.2 21.2,18.6 24.7,28.8 16,22.4 7.3,28.8 10.8,18.6 2,12.2 12.5,12.2" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("pentagon");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Pentagon"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 28,12 24,26 8,26 4,12" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("hexagon");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Hexagon"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 24,8 28,16 24,24 16,28 8,24 4,16 8,8" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -885,6 +1139,7 @@ function App() {
                   </button>
                 </div>
                 {/* Corner Radius */}
+<<<<<<< HEAD
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
                     <img 
@@ -972,6 +1227,21 @@ function App() {
                       }`}
                     />
                   </div>
+=======
+                <div className="flex items-center gap-2">
+                  <img src={cornerRadiusIcon} alt="Corner Radius" className="w-auto h-4" />
+                  <span className="text-sm text-white dark:text-white">Corner Radius:</span>
+                  <input
+                    type="number"
+                    value={selectedShape.type === "circle" || selectedShape.type === "ellipse" 
+                      ? Math.min(shapeWidth, shapeHeight) / 2 
+                      : selectedShape.type === "roundedRectangle" 
+                      ? 10 
+                      : 0}
+                    disabled
+                    className="w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm"
+                  />
+>>>>>>> develop
                 </div>
               </div>
             </div>
@@ -995,7 +1265,7 @@ function App() {
             }}
           >
             {/* 드래그 미리보기 */}
-            {drawPreview && (
+            {drawPreview && pendingShapeType && (
               <div
                 style={{
                   position: "absolute",
@@ -1006,22 +1276,28 @@ function App() {
                   border: "2px dashed #f9a8d4",
                   backgroundColor: "rgba(249, 168, 212, 0.2)",
                   pointerEvents: "none",
-                  borderRadius: pendingShapeType === "circle" 
+                  borderRadius: pendingShapeType === "circle" || pendingShapeType === "ellipse" 
                     ? "50%" 
-                    : `${shapeBorderRadius}px`,
+                    : pendingShapeType === "roundedRectangle" 
+                      ? "10px" 
+                      : pendingShapeType === "rectangle"
+                        ? `${shapeBorderRadius}px`
+                        : "0",
+                  clipPath: pendingShapeType === "triangle" ? "polygon(50% 0%, 0% 100%, 100% 100%)" :
+                           pendingShapeType === "diamond" ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" :
+                           pendingShapeType === "star" ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)" :
+                           pendingShapeType === "hexagon" ? "polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)" :
+                           pendingShapeType === "pentagon" ? "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)" : undefined,
+                  transform: pendingShapeType === "parallelogram" ? "skew(-20deg)" : undefined,
                 }}
               />
             )}
             {shapes.map((shape) => {
               const isSelected = selectedShape?.id === shape.id;
-              const borderRadius = shape.borderRadius !== undefined 
-                ? `${shape.borderRadius}px` 
-                : shape.type === "circle" 
-                  ? "50%" 
-                  : "0";
               return (
                 <div
                   key={shape.id}
+                  className="shape-container"
                   onMouseDown={(e) => handleMouseDown(e, shape)}
                   style={{
                     position: "absolute",
@@ -1029,29 +1305,33 @@ function App() {
                     top: `${shape.y}px`,
                     width: `${shape.width}px`,
                     height: `${shape.height}px`,
-                    border: isSelected ? "2px solid #f9a8d4" : "1px solid #f9a8d4",
-                    borderRadius: borderRadius,
-                    boxSizing: "border-box",
-                    cursor:
-                      isDragging && isSelected
-                        ? "grabbing"
-                        : isSelected
-                        ? "move"
-                        : "grab",
-                    overflow: "hidden",
-                    userSelect: "none",
-                    padding: 0,
+                    pointerEvents: "auto",
                   }}
                 >
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      backgroundColor: shape.color,
-                      borderRadius: borderRadius,
-                      boxSizing: "border-box",
-                    }}
-                  />
+                  {shape.type === "triangle" ? (
+                    <svg
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                      }}
+                    >
+                      <polygon
+                        points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
+                        fill={shape.color}
+                        stroke={isSelected ? "#f9a8d4" : "none"}
+                        strokeWidth={isSelected ? "2" : "0"}
+                      />
+                    </svg>
+                  ) : (
+                    <div
+                      style={{
+                        ...getShapeStyle(shape),
+                        border: isSelected ? "2px solid #f9a8d4" : "none",
+                        cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                        userSelect: "none",
+                      }}
+                    />
+                  )}
                   {isSelected && (
                     <>
                       {/* 모서리 핸들 */}
