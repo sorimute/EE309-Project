@@ -32,6 +32,7 @@ interface Shape {
   width: number;
   height: number;
   color: string;
+  borderRadius?: number;
 }
 
 interface FileItem {
@@ -51,6 +52,8 @@ function App() {
   const [shapeHeight, setShapeHeight] = useState(100);
   const [_shapeX, setShapeX] = useState(50);
   const [_shapeY, setShapeY] = useState(50);
+  const [shapeBorderRadius, setShapeBorderRadius] = useState(0);
+  const [borderRadiusInputValue, setBorderRadiusInputValue] = useState<string>("0");
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [pendingShapeType, setPendingShapeType] = useState<ShapeType | null>(null);
@@ -72,6 +75,7 @@ function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const textColorMenuRef = useRef<HTMLDivElement>(null);
   const shapeColorMenuRef = useRef<HTMLDivElement>(null);
+  const borderRadiusInputRef = useRef<HTMLInputElement>(null);
 
   // 플레이스홀더 파일 목록
   const [files] = useState<FileItem[]>([
@@ -87,6 +91,11 @@ function App() {
       height: "100%",
       backgroundColor: shape.color,
     };
+
+    // rectangle 타입의 경우 사용자가 설정한 borderRadius 사용
+    if (shape.type === "rectangle" && shape.borderRadius !== undefined) {
+      return { ...baseStyle, borderRadius: `${shape.borderRadius}px` };
+    }
 
     switch (shape.type) {
       case "rectangle":
@@ -202,10 +211,20 @@ function App() {
     if (shapes.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
     
     const xmlParts = shapes.map((shape) => {
+      let borderRadiusValue: string;
+      if (shape.type === "circle" || shape.type === "ellipse") {
+        borderRadiusValue = "50%";
+      } else if (shape.type === "roundedRectangle") {
+        borderRadiusValue = "10";
+      } else if (shape.borderRadius !== undefined) {
+        borderRadiusValue = `${shape.borderRadius}`;
+      } else {
+        borderRadiusValue = "0";
+      }
       return `  <shape id="${shape.id}" type="${shape.type}">
     <position x="${shape.x}" y="${shape.y}" />
     <size width="${shape.width}" height="${shape.height}" />
-    <style color="${shape.color}" />
+    <style color="${shape.color}" borderRadius="${borderRadiusValue}" />
   </shape>`;
     });
     
@@ -219,7 +238,12 @@ function App() {
     const getShapeCSS = (shape: Shape) => {
       let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
       
-      switch (shape.type) {
+      // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
+      if (shape.borderRadius !== undefined && shape.type === "rectangle") {
+        css += `\n  border-radius: ${shape.borderRadius}px;`;
+      } else {
+        // 도형 타입에 따른 기본 스타일
+        switch (shape.type) {
           case "roundedRectangle":
             css += "\n  border-radius: 10px;";
             break;
@@ -245,6 +269,7 @@ function App() {
           case "pentagon":
             css += "\n  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);";
             break;
+        }
       }
       
       css += "\n}";
@@ -267,7 +292,12 @@ function App() {
       
       let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',`;
       
-      switch (shape.type) {
+      // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
+      if (shape.borderRadius !== undefined && shape.type === "rectangle") {
+        style += `\n      borderRadius: ${shape.borderRadius},`;
+      } else {
+        // 도형 타입에 따른 기본 스타일
+        switch (shape.type) {
           case "roundedRectangle":
             style += "\n      borderRadius: '10px',";
             break;
@@ -290,6 +320,7 @@ function App() {
           case "pentagon":
             style += "\n      clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',";
             break;
+        }
       }
       
       return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
@@ -469,17 +500,28 @@ function App() {
       
       // 최소 크기 체크
       if (width >= 10 && height >= 10) {
+        const finalWidth = Math.max(20, width);
+        const finalHeight = Math.max(20, height);
+        // 원/타원의 경우 borderRadius를 undefined로 설정 (렌더링 시 50%로 적용됨)
+        // rectangle의 경우 0으로 설정 (나중에 사용자가 조정 가능)
+        const initialBorderRadius = (pendingShapeType === "circle" || pendingShapeType === "ellipse") 
+          ? undefined 
+          : (pendingShapeType === "rectangle" ? 0 : undefined);
         const newShape: Shape = {
           id: Date.now(),
           type: pendingShapeType,
           x: Math.max(0, x),
           y: Math.max(0, y),
-          width: Math.max(20, width),
-          height: Math.max(20, height),
+          width: finalWidth,
+          height: finalHeight,
           color: DEFAULT_SHAPE_COLOR,
+          borderRadius: initialBorderRadius,
         };
         setShapes([...shapes, newShape]);
         setSelectedShape(newShape);
+        // 원/타원의 경우 borderRadius를 0으로 표시 (실제로는 50%로 렌더링됨)
+        setShapeBorderRadius(0);
+        setBorderRadiusInputValue("0");
       }
       
       setIsDrawing(false);
@@ -496,7 +538,8 @@ function App() {
     width?: number,
     height?: number,
     x?: number,
-    y?: number
+    y?: number,
+    borderRadius?: number
   ) => {
     if (selectedShape) {
       // 선택된 도형의 현재 값을 기본값으로 사용 (state가 아닌 실제 도형 데이터 사용)
@@ -505,6 +548,12 @@ function App() {
       const newHeight = height ?? selectedShape.height;
       const newX = x ?? selectedShape.x;
       const newY = y ?? selectedShape.y;
+      // 원의 경우 borderRadius를 undefined로 유지, 그 외에는 명시적으로 설정된 값 사용
+      const newBorderRadius = borderRadius !== undefined 
+        ? borderRadius 
+        : selectedShape.type === "circle" || selectedShape.type === "ellipse"
+          ? undefined 
+          : (selectedShape.borderRadius ?? 0);
 
       const updatedShape = {
         ...selectedShape,
@@ -513,6 +562,7 @@ function App() {
         height: newHeight,
         x: newX,
         y: newY,
+        borderRadius: newBorderRadius,
       };
 
       setShapes(
@@ -527,6 +577,8 @@ function App() {
       setShapeHeight(newHeight);
       setShapeX(newX);
       setShapeY(newY);
+      setShapeBorderRadius(newBorderRadius ?? 0);
+      setBorderRadiusInputValue((newBorderRadius ?? 0).toString());
     }
   };
 
@@ -558,6 +610,9 @@ function App() {
         setShapeHeight(shape.height);
         setShapeX(shape.x);
         setShapeY(shape.y);
+        const borderRadius = shape.borderRadius ?? (shape.type === "circle" || shape.type === "ellipse" ? Math.min(shape.width, shape.height) / 2 : 0);
+        setShapeBorderRadius(borderRadius);
+        setBorderRadiusInputValue(borderRadius.toString());
         setPendingShapeType(null); // 도형 선택 시 추가 모드 해제
       }
       return;
@@ -569,6 +624,9 @@ function App() {
     setShapeHeight(shape.height);
     setShapeX(shape.x);
     setShapeY(shape.y);
+    const borderRadius = shape.borderRadius ?? (shape.type === "circle" || shape.type === "ellipse" ? Math.min(shape.width, shape.height) / 2 : 0);
+    setShapeBorderRadius(borderRadius);
+    setBorderRadiusInputValue(borderRadius.toString());
     setPendingShapeType(null); // 도형 선택 시 추가 모드 해제
 
     if (canvasRef.current) {
@@ -1067,19 +1125,94 @@ function App() {
                     </svg>
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <img src={cornerRadiusIcon} alt="Corner Radius" className="w-auto h-4" />
-                  <span className="text-sm text-white dark:text-white">Corner Radius:</span>
-                  <input
-                    type="number"
-                    value={selectedShape.type === "circle" || selectedShape.type === "ellipse" 
-                      ? Math.min(shapeWidth, shapeHeight) / 2 
-                      : selectedShape.type === "roundedRectangle" 
-                      ? 10 
-                      : 0}
-                    disabled
-                    className="w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm"
-                  />
+                {/* Corner Radius */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <img 
+                      src={cornerRadiusIcon} 
+                      alt="Corner Radius" 
+                      className={`w-auto h-4 ${selectedShape.type !== "rectangle" ? "opacity-50" : ""}`} 
+                    />
+                    <span className={`text-sm ${selectedShape.type !== "rectangle" ? "text-gray-500" : "text-white dark:text-white"}`}>
+                      Corner Radius:
+                    </span>
+                    <input
+                      ref={borderRadiusInputRef}
+                      type="text"
+                      value={borderRadiusInputValue}
+                      disabled={selectedShape.type !== "rectangle"}
+                      onChange={(e) => {
+                        if (selectedShape.type !== "rectangle") return;
+                        const input = e.target.value;
+                        // 빈 문자열이거나 숫자만 허용
+                        if (input === '' || /^\d+$/.test(input)) {
+                          const cursorPosition = e.target.selectionStart || 0;
+                          setBorderRadiusInputValue(input);
+                          
+                          // 숫자가 입력된 경우에만 도형 업데이트
+                          if (input !== '' && /^\d+$/.test(input)) {
+                            const maxRadius = Math.min(shapeWidth, shapeHeight) / 2;
+                            const newRadius = Math.max(0, Math.min(Number(input), maxRadius));
+                            setShapeBorderRadius(newRadius);
+                            updateSelectedShape(undefined, undefined, undefined, undefined, undefined, newRadius);
+                          }
+                          
+                          // 커서 위치 복원
+                          setTimeout(() => {
+                            if (borderRadiusInputRef.current) {
+                              const newPosition = Math.min(cursorPosition, input.length);
+                              borderRadiusInputRef.current.setSelectionRange(newPosition, newPosition);
+                            }
+                          }, 0);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (selectedShape.type !== "rectangle") return;
+                        // 포커스를 잃을 때 빈 값이면 현재 borderRadius 값으로 복원
+                        const value = e.target.value;
+                        if (value === '' || isNaN(Number(value)) || value === '0') {
+                          const maxRadius = Math.min(shapeWidth, shapeHeight) / 2;
+                          const finalRadius = Math.max(0, Math.min(Number(value) || 0, maxRadius));
+                          setShapeBorderRadius(finalRadius);
+                          setBorderRadiusInputValue(finalRadius.toString());
+                          updateSelectedShape(undefined, undefined, undefined, undefined, undefined, finalRadius);
+                        } else {
+                          // 유효한 값이면 최대값 체크
+                          const maxRadius = Math.min(shapeWidth, shapeHeight) / 2;
+                          const finalRadius = Math.max(0, Math.min(Number(value), maxRadius));
+                          setShapeBorderRadius(finalRadius);
+                          setBorderRadiusInputValue(finalRadius.toString());
+                          updateSelectedShape(undefined, undefined, undefined, undefined, undefined, finalRadius);
+                        }
+                      }}
+                      className={`w-16 px-2 py-1 bg-black dark:bg-black border rounded text-sm ${
+                        selectedShape.type !== "rectangle" 
+                          ? "text-gray-500 border-gray-600 cursor-not-allowed opacity-50" 
+                          : "text-white border-pink-300/20"
+                      }`}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.min(shapeWidth, shapeHeight) / 2}
+                      value={shapeBorderRadius}
+                      disabled={selectedShape.type !== "rectangle"}
+                      onChange={(e) => {
+                        if (selectedShape.type !== "rectangle") return;
+                        const newRadius = Number(e.target.value);
+                        setShapeBorderRadius(newRadius);
+                        setBorderRadiusInputValue(newRadius.toString());
+                        updateSelectedShape(undefined, undefined, undefined, undefined, undefined, newRadius);
+                      }}
+                      className={`flex-1 h-2 bg-gray-700 rounded-lg appearance-none ${
+                        selectedShape.type !== "rectangle" 
+                          ? "opacity-50 cursor-not-allowed" 
+                          : "cursor-pointer accent-pink-300"
+                      }`}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1114,7 +1247,13 @@ function App() {
                   border: "2px dashed #f9a8d4",
                   backgroundColor: "rgba(249, 168, 212, 0.2)",
                   pointerEvents: "none",
-                  borderRadius: pendingShapeType === "circle" || pendingShapeType === "ellipse" ? "50%" : pendingShapeType === "roundedRectangle" ? "10px" : "0",
+                  borderRadius: pendingShapeType === "circle" || pendingShapeType === "ellipse" 
+                    ? "50%" 
+                    : pendingShapeType === "roundedRectangle" 
+                      ? "10px" 
+                      : pendingShapeType === "rectangle"
+                        ? `${shapeBorderRadius}px`
+                        : "0",
                   clipPath: pendingShapeType === "triangle" ? "polygon(50% 0%, 0% 100%, 100% 100%)" :
                            pendingShapeType === "diamond" ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" :
                            pendingShapeType === "star" ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)" :
