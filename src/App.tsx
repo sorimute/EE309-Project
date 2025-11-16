@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
+// @ts-ignore
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+// @ts-ignore
 import { dracula } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import "./App.css";
 import cssIcon from "./assets/css.png";
@@ -47,8 +49,8 @@ function App() {
   const [shapeColor, setShapeColor] = useState(DEFAULT_SHAPE_COLOR);
   const [shapeWidth, setShapeWidth] = useState(100);
   const [shapeHeight, setShapeHeight] = useState(100);
-  const [shapeX, setShapeX] = useState(50);
-  const [shapeY, setShapeY] = useState(50);
+  const [_shapeX, setShapeX] = useState(50);
+  const [_shapeY, setShapeY] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [pendingShapeType, setPendingShapeType] = useState<ShapeType | null>(null);
@@ -63,7 +65,7 @@ function App() {
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [codeView, setCodeView] = useState<"xml" | "css" | "react">("xml");
-  const [currentFileName, setCurrentFileName] = useState<string>("React.tsx");
+  const [_currentFileName, setCurrentFileName] = useState<string>("React.tsx");
   const [openedFiles, setOpenedFiles] = useState<string[]>(["React.tsx"]); // 열린 파일 목록
   const [activeFile, setActiveFile] = useState<string>("React.tsx"); // 현재 활성화된 파일
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -243,7 +245,6 @@ function App() {
           case "pentagon":
             css += "\n  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);";
             break;
-        }
       }
       
       css += "\n}";
@@ -289,7 +290,6 @@ function App() {
           case "pentagon":
             style += "\n      clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',";
             break;
-        }
       }
       
       return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
