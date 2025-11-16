@@ -218,31 +218,32 @@ function App() {
       let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
       
       switch (shape.type) {
-        case "roundedRectangle":
-          css += "\n  border-radius: 10px;";
-          break;
-        case "circle":
-        case "ellipse":
-          css += "\n  border-radius: 50%;";
-          break;
-        case "parallelogram":
-          css += "\n  transform: skew(-20deg);";
-          break;
-        case "triangle":
-          css += "\n  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);";
-          break;
-        case "diamond":
-          css += "\n  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);";
-          break;
-        case "star":
-          css += "\n  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);";
-          break;
-        case "hexagon":
-          css += "\n  clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);";
-          break;
-        case "pentagon":
-          css += "\n  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);";
-          break;
+          case "roundedRectangle":
+            css += "\n  border-radius: 10px;";
+            break;
+          case "circle":
+          case "ellipse":
+            css += "\n  border-radius: 50%;";
+            break;
+          case "parallelogram":
+            css += "\n  transform: skew(-20deg);";
+            break;
+          case "triangle":
+            css += "\n  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);";
+            break;
+          case "diamond":
+            css += "\n  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);";
+            break;
+          case "star":
+            css += "\n  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);";
+            break;
+          case "hexagon":
+            css += "\n  clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);";
+            break;
+          case "pentagon":
+            css += "\n  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);";
+            break;
+        }
       }
       
       css += "\n}";
@@ -266,28 +267,29 @@ function App() {
       let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',`;
       
       switch (shape.type) {
-        case "roundedRectangle":
-          style += "\n      borderRadius: '10px',";
-          break;
-        case "circle":
-        case "ellipse":
-          style += "\n      borderRadius: '50%',";
-          break;
-        case "parallelogram":
-          style += "\n      transform: 'skew(-20deg)',";
-          break;
-        case "diamond":
-          style += "\n      clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',";
-          break;
-        case "star":
-          style += "\n      clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',";
-          break;
-        case "hexagon":
-          style += "\n      clipPath: 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)',";
-          break;
-        case "pentagon":
-          style += "\n      clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',";
-          break;
+          case "roundedRectangle":
+            style += "\n      borderRadius: '10px',";
+            break;
+          case "circle":
+          case "ellipse":
+            style += "\n      borderRadius: '50%',";
+            break;
+          case "parallelogram":
+            style += "\n      transform: 'skew(-20deg)',";
+            break;
+          case "diamond":
+            style += "\n      clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',";
+            break;
+          case "star":
+            style += "\n      clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',";
+            break;
+          case "hexagon":
+            style += "\n      clipPath: 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)',";
+            break;
+          case "pentagon":
+            style += "\n      clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',";
+            break;
+        }
       }
       
       return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
@@ -369,6 +371,12 @@ function App() {
   // Delete 키로 도형 삭제, 화살표 키로 도형 이동
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // input 필드에 포커스가 있으면 도형 삭제/이동을 하지 않음
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA")) {
+        return;
+      }
+      
       if (selectedShape && !pendingShapeType && !isDrawing && canvasRef.current) {
         if (event.key === "Delete" || event.key === "Backspace") {
           setShapes((prevShapes) => prevShapes.filter((shape) => shape.id !== selectedShape.id));
@@ -1059,7 +1067,6 @@ function App() {
                     </svg>
                   </button>
                 </div>
-                {/* Corner Radius */}
                 <div className="flex items-center gap-2">
                   <img src={cornerRadiusIcon} alt="Corner Radius" className="w-auto h-4" />
                   <span className="text-sm text-white dark:text-white">Corner Radius:</span>
@@ -1119,7 +1126,6 @@ function App() {
             )}
             {shapes.map((shape) => {
               const isSelected = selectedShape?.id === shape.id;
-              
               return (
                 <div
                   key={shape.id}
