@@ -20,9 +20,11 @@ import alignLeftIcon from "./assets/align_left.png";
 import alignCenterIcon from "./assets/align_center.png";
 import alignRightIcon from "./assets/align_right.png";
 
+type ShapeType = "rectangle" | "roundedRectangle" | "circle" | "ellipse" | "parallelogram" | "star" | "triangle" | "diamond" | "hexagon" | "pentagon";
+
 interface Shape {
   id: number;
-  type: "rectangle" | "circle";
+  type: ShapeType;
   x: number;
   y: number;
   width: number;
@@ -36,17 +38,20 @@ interface FileItem {
   extension: "xml" | "css" | "react";
 }
 
+// 도형의 기본 색상 (프로그램에서 사용하는 핑크색)
+const DEFAULT_SHAPE_COLOR = "#f9a8d4";
+
 function App() {
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
-  const [shapeColor, setShapeColor] = useState("#3b82f6");
+  const [shapeColor, setShapeColor] = useState(DEFAULT_SHAPE_COLOR);
   const [shapeWidth, setShapeWidth] = useState(100);
   const [shapeHeight, setShapeHeight] = useState(100);
   const [shapeX, setShapeX] = useState(50);
   const [shapeY, setShapeY] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [pendingShapeType, setPendingShapeType] = useState<"rectangle" | "circle" | null>(null);
+  const [pendingShapeType, setPendingShapeType] = useState<ShapeType | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, shapeX: 0, shapeY: 0 });
@@ -72,6 +77,60 @@ function App() {
     { name: "Test2.css", type: "file", extension: "css" },
     { name: "React.tsx", type: "file", extension: "react" },
   ]);
+
+  // 도형 타입에 따른 스타일 반환 (위치 정보 제외, 모양만)
+  const getShapeStyle = (shape: Shape) => {
+    const baseStyle: React.CSSProperties = {
+      width: "100%",
+      height: "100%",
+      backgroundColor: shape.color,
+    };
+
+    switch (shape.type) {
+      case "rectangle":
+        return { ...baseStyle, borderRadius: "0" };
+      case "roundedRectangle":
+        return { ...baseStyle, borderRadius: "10px" };
+      case "circle":
+        return { ...baseStyle, borderRadius: "50%" };
+      case "ellipse":
+        return { ...baseStyle, borderRadius: "50%" };
+      case "parallelogram":
+        return {
+          ...baseStyle,
+          transform: "skew(-20deg)",
+          transformOrigin: "center",
+        };
+      case "triangle":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+          backgroundColor: "transparent",
+        };
+      case "diamond":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+        };
+      case "star":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)",
+        };
+      case "hexagon":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)",
+        };
+      case "pentagon":
+        return {
+          ...baseStyle,
+          clipPath: "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+        };
+      default:
+        return baseStyle;
+    }
+  };
 
   // 파일 확장자에 따라 아이콘 반환
   const getFileIcon = (fileName: string, fileExtension?: string) => {
@@ -140,7 +199,7 @@ function App() {
   const generateXML = () => {
     if (shapes.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
     
-    const xmlParts = shapes.map((shape, index) => {
+    const xmlParts = shapes.map((shape) => {
       return `  <shape id="${shape.id}" type="${shape.type}">
     <position x="${shape.x}" y="${shape.y}" />
     <size width="${shape.width}" height="${shape.height}" />
@@ -155,9 +214,42 @@ function App() {
   const generateCSS = () => {
     if (shapes.length === 0) return "/* 코드가 여기에 표시됩니다 */";
     
-    const cssParts = shapes.map((shape) => {
-      return `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};\n  ${shape.type === "circle" ? "border-radius: 50%;" : ""}\n}`;
-    });
+    const getShapeCSS = (shape: Shape) => {
+      let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
+      
+      switch (shape.type) {
+        case "roundedRectangle":
+          css += "\n  border-radius: 10px;";
+          break;
+        case "circle":
+        case "ellipse":
+          css += "\n  border-radius: 50%;";
+          break;
+        case "parallelogram":
+          css += "\n  transform: skew(-20deg);";
+          break;
+        case "triangle":
+          css += "\n  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);";
+          break;
+        case "diamond":
+          css += "\n  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);";
+          break;
+        case "star":
+          css += "\n  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);";
+          break;
+        case "hexagon":
+          css += "\n  clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);";
+          break;
+        case "pentagon":
+          css += "\n  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);";
+          break;
+      }
+      
+      css += "\n}";
+      return css;
+    };
+    
+    const cssParts = shapes.map((shape) => getShapeCSS(shape));
     
     return cssParts.join("\n\n");
   };
@@ -166,9 +258,42 @@ function App() {
   const generateReact = () => {
     if (shapes.length === 0) return "// 코드가 여기에 표시됩니다";
     
-    const reactParts = shapes.map((shape) => {
-      return `  <div\n    className="shape-${shape.id}"\n    style={{\n      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',\n      ${shape.type === "circle" ? "borderRadius: '50%'," : ""}\n    }}\n  />`;
-    });
+    const getShapeReact = (shape: Shape) => {
+      if (shape.type === "triangle") {
+        return `  <svg\n    style={{\n      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n    }}\n  >\n    <polygon\n      points={\`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}\`}\n      fill='${shape.color}'\n    />\n  </svg>`;
+      }
+      
+      let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',`;
+      
+      switch (shape.type) {
+        case "roundedRectangle":
+          style += "\n      borderRadius: '10px',";
+          break;
+        case "circle":
+        case "ellipse":
+          style += "\n      borderRadius: '50%',";
+          break;
+        case "parallelogram":
+          style += "\n      transform: 'skew(-20deg)',";
+          break;
+        case "diamond":
+          style += "\n      clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',";
+          break;
+        case "star":
+          style += "\n      clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',";
+          break;
+        case "hexagon":
+          style += "\n      clipPath: 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)',";
+          break;
+        case "pentagon":
+          style += "\n      clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',";
+          break;
+      }
+      
+      return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
+    };
+    
+    const reactParts = shapes.map((shape) => getShapeReact(shape));
     
     return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
   };
@@ -299,9 +424,15 @@ function App() {
     }
     
     // 도형이나 리사이즈 핸들을 클릭한 경우 무시
+    // (handleMouseDown에서 stopPropagation이 호출되므로 여기까지 오지 않음)
     const target = e.target as HTMLElement;
-    if (target.closest(".resize-handle") || target.style.position === "absolute") {
+    if (target.closest(".resize-handle") || target.closest(".shape-container")) {
       return;
+    }
+    
+    // 도형 추가 모드가 아닐 때 바탕을 클릭하면 선택 해제
+    if (!pendingShapeType) {
+      setSelectedShape(null);
     }
     
     // 도형 추가 모드일 때 드래그 시작
@@ -337,7 +468,7 @@ function App() {
           y: Math.max(0, y),
           width: Math.max(20, width),
           height: Math.max(20, height),
-          color: shapeColor,
+          color: DEFAULT_SHAPE_COLOR,
         };
         setShapes([...shapes, newShape]);
         setSelectedShape(newShape);
@@ -389,15 +520,6 @@ function App() {
       setShapeX(newX);
       setShapeY(newY);
     }
-  };
-
-  const handleShapeClick = (shape: Shape) => {
-    setSelectedShape(shape);
-    setShapeColor(shape.color);
-    setShapeWidth(shape.width);
-    setShapeHeight(shape.height);
-    setShapeX(shape.x);
-    setShapeY(shape.y);
   };
 
   const handleMouseDown = (e: React.MouseEvent, shape: Shape) => {
@@ -661,25 +783,139 @@ function App() {
                 <img src={newshapeIcon} alt="New Shape" className="w-16 h-auto" />
               </button>
               {showShapeMenu && (
-                <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[120px]">
-                  <button
-                    onClick={() => {
-                      setPendingShapeType("rectangle");
-                      setShowShapeMenu(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-800 dark:hover:bg-gray-800 text-white rounded-t"
-                  >
-                    사각형
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPendingShapeType("circle");
-                      setShowShapeMenu(false);
-                    }}
-                    className="block w-full text-left px-4 py-2 hover:bg-gray-800 dark:hover:bg-gray-800 text-white rounded-b"
-                  >
-                    원
-                  </button>
+                <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[200px] max-h-[400px] overflow-y-auto">
+                  {/* Rectangles */}
+                  <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                    Rectangles
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("rectangle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Rectangle"
+                    >
+                      <div className="w-8 h-8 bg-pink-300 rounded-sm"></div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("roundedRectangle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Rounded Rectangle"
+                    >
+                      <div className="w-8 h-8 bg-pink-300 rounded"></div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("parallelogram");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Parallelogram"
+                    >
+                      <div className="w-8 h-8 bg-pink-300" style={{ transform: "skew(-20deg)" }}></div>
+                    </button>
+                  </div>
+                  
+                  {/* Circles */}
+                  <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                    Circles
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("circle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Circle"
+                    >
+                      <div className="w-8 h-8 bg-pink-300 rounded-full"></div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("ellipse");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Ellipse"
+                    >
+                      <div className="w-10 h-8 bg-pink-300 rounded-full"></div>
+                    </button>
+                  </div>
+                  
+                  {/* Polygons */}
+                  <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                    Polygons
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("triangle");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Triangle"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 4,28 28,28" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("diamond");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Diamond"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 28,16 16,28 4,16" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("star");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Star"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,2 19.5,12.2 30,12.2 21.2,18.6 24.7,28.8 16,22.4 7.3,28.8 10.8,18.6 2,12.2 12.5,12.2" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex gap-1 p-2">
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("pentagon");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Pentagon"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 28,12 24,26 8,26 4,12" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingShapeType("hexagon");
+                        setShowShapeMenu(false);
+                      }}
+                      className="flex-1 p-2 hover:bg-gray-800 dark:hover:bg-gray-800 rounded flex items-center justify-center"
+                      title="Hexagon"
+                    >
+                      <svg width="32" height="32" viewBox="0 0 32 32">
+                        <polygon points="16,4 24,8 28,16 24,24 16,28 8,24 4,16 8,8" fill="#f9a8d4" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -829,7 +1065,11 @@ function App() {
                   <span className="text-sm text-white dark:text-white">Corner Radius:</span>
                   <input
                     type="number"
-                    value={selectedShape.type === "circle" ? Math.min(shapeWidth, shapeHeight) / 2 : 0}
+                    value={selectedShape.type === "circle" || selectedShape.type === "ellipse" 
+                      ? Math.min(shapeWidth, shapeHeight) / 2 
+                      : selectedShape.type === "roundedRectangle" 
+                      ? 10 
+                      : 0}
                     disabled
                     className="w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm"
                   />
@@ -856,7 +1096,7 @@ function App() {
             }}
           >
             {/* 드래그 미리보기 */}
-            {drawPreview && (
+            {drawPreview && pendingShapeType && (
               <div
                 style={{
                   position: "absolute",
@@ -867,15 +1107,23 @@ function App() {
                   border: "2px dashed #f9a8d4",
                   backgroundColor: "rgba(249, 168, 212, 0.2)",
                   pointerEvents: "none",
-                  borderRadius: pendingShapeType === "circle" ? "50%" : "0",
+                  borderRadius: pendingShapeType === "circle" || pendingShapeType === "ellipse" ? "50%" : pendingShapeType === "roundedRectangle" ? "10px" : "0",
+                  clipPath: pendingShapeType === "triangle" ? "polygon(50% 0%, 0% 100%, 100% 100%)" :
+                           pendingShapeType === "diamond" ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" :
+                           pendingShapeType === "star" ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)" :
+                           pendingShapeType === "hexagon" ? "polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)" :
+                           pendingShapeType === "pentagon" ? "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)" : undefined,
+                  transform: pendingShapeType === "parallelogram" ? "skew(-20deg)" : undefined,
                 }}
               />
             )}
             {shapes.map((shape) => {
               const isSelected = selectedShape?.id === shape.id;
+              
               return (
                 <div
                   key={shape.id}
+                  className="shape-container"
                   onMouseDown={(e) => handleMouseDown(e, shape)}
                   style={{
                     position: "absolute",
@@ -883,18 +1131,33 @@ function App() {
                     top: `${shape.y}px`,
                     width: `${shape.width}px`,
                     height: `${shape.height}px`,
-                    backgroundColor: shape.color,
-                    border: isSelected ? "2px solid #f9a8d4" : "1px solid #f9a8d4",
-                    cursor:
-                      isDragging && isSelected
-                        ? "grabbing"
-                        : isSelected
-                        ? "move"
-                        : "grab",
-                    borderRadius: shape.type === "circle" ? "50%" : "0",
-                    userSelect: "none",
+                    pointerEvents: "auto",
                   }}
                 >
+                  {shape.type === "triangle" ? (
+                    <svg
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                      }}
+                    >
+                      <polygon
+                        points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
+                        fill={shape.color}
+                        stroke={isSelected ? "#f9a8d4" : "none"}
+                        strokeWidth={isSelected ? "2" : "0"}
+                      />
+                    </svg>
+                  ) : (
+                    <div
+                      style={{
+                        ...getShapeStyle(shape),
+                        border: isSelected ? "2px solid #f9a8d4" : "none",
+                        cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                        userSelect: "none",
+                      }}
+                    />
+                  )}
                   {isSelected && (
                     <>
                       {/* 모서리 핸들 */}
