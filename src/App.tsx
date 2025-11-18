@@ -33,6 +33,17 @@ interface Shape {
   height: number;
   color: string;
   borderRadius?: number;
+  shadowType?: "none" | "outer" | "inner";
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  opacity?: number;
+  glowEnabled?: boolean;
+  glowColor?: string;
+  glowBlur?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
 }
 
 interface FileItem {
@@ -63,6 +74,10 @@ function App() {
   const [showShapeMenu, setShowShapeMenu] = useState(false);
   const [showShapeColorMenu, setShowShapeColorMenu] = useState(false);
   const [showTextColorMenu, setShowTextColorMenu] = useState(false);
+  const [showEffectsMenu, setShowEffectsMenu] = useState(false);
+  const [showOpacityControl, setShowOpacityControl] = useState(false);
+  const [showGlowControl, setShowGlowControl] = useState(false);
+  const [showStrokeMenu, setShowStrokeMenu] = useState(false);
   const [textColor, setTextColor] = useState("#000000");
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
@@ -75,6 +90,8 @@ function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const textColorMenuRef = useRef<HTMLDivElement>(null);
   const shapeColorMenuRef = useRef<HTMLDivElement>(null);
+  const effectsMenuRef = useRef<HTMLDivElement>(null);
+  const strokeMenuRef = useRef<HTMLDivElement>(null);
   const borderRadiusInputRef = useRef<HTMLInputElement>(null);
 
   // 플레이스홀더 파일 목록
@@ -84,6 +101,16 @@ function App() {
     { name: "React.tsx", type: "file", extension: "react" },
   ]);
 
+  // clip-path를 사용하는 도형 타입인지 확인
+  const isClipPathShape = (type: ShapeType): boolean => {
+    return type === "triangle" || type === "diamond" || type === "star" || type === "hexagon" || type === "pentagon";
+  };
+
+  // triangle을 제외한 polygon 타입인지 확인 (Effects 비활성화용)
+  const isNonTrianglePolygon = (type: ShapeType): boolean => {
+    return type === "diamond" || type === "star" || type === "hexagon" || type === "pentagon";
+  };
+
   // 도형 타입에 따른 스타일 반환 (위치 정보 제외, 모양만)
   const getShapeStyle = (shape: Shape) => {
     const baseStyle: React.CSSProperties = {
@@ -91,6 +118,66 @@ function App() {
       height: "100%",
       backgroundColor: shape.color,
     };
+
+    // Opacity 적용
+    if (shape.opacity !== undefined) {
+      baseStyle.opacity = shape.opacity;
+    }
+
+    // clip-path를 사용하는 도형은 drop-shadow filter 사용, 그 외는 box-shadow 사용
+    const useClipPath = isClipPathShape(shape.type);
+    
+    // Shadow와 Glow 효과를 결합
+    const shadows: string[] = [];
+    const filters: string[] = [];
+    
+    if (shape.shadowType && shape.shadowType !== "none") {
+      const offsetX = shape.shadowOffsetX ?? 4;
+      const offsetY = shape.shadowOffsetY ?? 4;
+      const blur = shape.shadowBlur ?? 8;
+      const color = shape.shadowColor ?? "rgba(0, 0, 0, 0.3)";
+      
+      if (useClipPath) {
+        // clip-path를 사용하는 도형은 drop-shadow filter 사용 (outer shadow만 지원)
+        if (shape.shadowType === "outer") {
+          filters.push(`drop-shadow(${offsetX}px ${offsetY}px ${blur}px ${color})`);
+        }
+      } else {
+        // 일반 도형은 box-shadow 사용
+        if (shape.shadowType === "inner") {
+          shadows.push(`inset ${offsetX}px ${offsetY}px ${blur}px ${color}`);
+        } else {
+          shadows.push(`${offsetX}px ${offsetY}px ${blur}px ${color}`);
+        }
+      }
+    }
+
+    // Glow 효과 추가
+    if (shape.glowEnabled) {
+      const glowColor = shape.glowColor ?? shape.color;
+      const glowBlur = shape.glowBlur ?? 20;
+      
+      if (useClipPath) {
+        // clip-path를 사용하는 도형은 filter로 glow 적용
+        filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+      } else {
+        // 일반 도형은 box-shadow로 glow 적용
+        shadows.push(`0 0 ${glowBlur}px ${glowColor}`);
+      }
+    }
+
+    // Shadow와 filter 적용
+    if (shadows.length > 0) {
+      baseStyle.boxShadow = shadows.join(", ");
+    }
+    if (filters.length > 0) {
+      baseStyle.filter = filters.join(" ");
+    }
+
+    // Stroke (외곽선) 적용
+    if (shape.strokeWidth !== undefined && shape.strokeWidth > 0) {
+      baseStyle.border = `${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"}`;
+    }
 
     // rectangle 타입의 경우 사용자가 설정한 borderRadius 사용
     if (shape.type === "rectangle" && shape.borderRadius !== undefined) {
@@ -221,10 +308,37 @@ function App() {
       } else {
         borderRadiusValue = "0";
       }
+      
+      let shadowAttr = "";
+      if (shape.shadowType && shape.shadowType !== "none") {
+        const offsetX = shape.shadowOffsetX ?? 4;
+        const offsetY = shape.shadowOffsetY ?? 4;
+        const blur = shape.shadowBlur ?? 8;
+        const color = shape.shadowColor ?? "rgba(0, 0, 0, 0.3)";
+        shadowAttr = ` shadowType="${shape.shadowType}" shadowColor="${color}" shadowBlur="${blur}" shadowOffsetX="${offsetX}" shadowOffsetY="${offsetY}"`;
+      }
+      
+      let opacityAttr = "";
+      if (shape.opacity !== undefined) {
+        opacityAttr = ` opacity="${shape.opacity}"`;
+      }
+      
+      let glowAttr = "";
+      if (shape.glowEnabled) {
+        const glowColor = shape.glowColor ?? shape.color;
+        const glowBlur = shape.glowBlur ?? 20;
+        glowAttr = ` glowEnabled="true" glowColor="${glowColor}" glowBlur="${glowBlur}"`;
+      }
+      
+      let strokeAttr = "";
+      if (shape.strokeWidth !== undefined && shape.strokeWidth > 0) {
+        strokeAttr = ` strokeColor="${shape.strokeColor ?? "#000000"}" strokeWidth="${shape.strokeWidth}"`;
+      }
+      
       return `  <shape id="${shape.id}" type="${shape.type}">
     <position x="${shape.x}" y="${shape.y}" />
     <size width="${shape.width}" height="${shape.height}" />
-    <style color="${shape.color}" borderRadius="${borderRadiusValue}" />
+    <style color="${shape.color}" borderRadius="${borderRadiusValue}"${shadowAttr}${opacityAttr}${glowAttr}${strokeAttr} />
   </shape>`;
     });
     
@@ -237,6 +351,13 @@ function App() {
     
     const getShapeCSS = (shape: Shape) => {
       let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
+      
+      // Opacity 추가
+      if (shape.opacity !== undefined) {
+        css += `\n  opacity: ${shape.opacity};`;
+      }
+      
+      const useClipPath = isClipPathShape(shape.type);
       
       // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
       if (shape.borderRadius !== undefined && shape.type === "rectangle") {
@@ -272,6 +393,56 @@ function App() {
         }
       }
       
+      // Shadow와 Glow 효과 추가
+      const shadows: string[] = [];
+      const filters: string[] = [];
+      
+      if (shape.shadowType && shape.shadowType !== "none") {
+        const offsetX = shape.shadowOffsetX ?? 4;
+        const offsetY = shape.shadowOffsetY ?? 4;
+        const blur = shape.shadowBlur ?? 8;
+        const color = shape.shadowColor ?? "rgba(0, 0, 0, 0.3)";
+        
+        if (useClipPath) {
+          // clip-path를 사용하는 도형은 drop-shadow filter 사용 (outer shadow만 지원)
+          if (shape.shadowType === "outer") {
+            filters.push(`drop-shadow(${offsetX}px ${offsetY}px ${blur}px ${color})`);
+          }
+        } else {
+          // 일반 도형은 box-shadow 사용
+          if (shape.shadowType === "inner") {
+            shadows.push(`inset ${offsetX}px ${offsetY}px ${blur}px ${color}`);
+          } else {
+            shadows.push(`${offsetX}px ${offsetY}px ${blur}px ${color}`);
+          }
+        }
+      }
+
+      // Glow 효과 추가
+      if (shape.glowEnabled) {
+        const glowColor = shape.glowColor ?? shape.color;
+        const glowBlur = shape.glowBlur ?? 20;
+        
+        if (useClipPath) {
+          filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+        } else {
+          shadows.push(`0 0 ${glowBlur}px ${glowColor}`);
+        }
+      }
+
+      // Shadow와 filter 적용
+      if (shadows.length > 0) {
+        css += `\n  box-shadow: ${shadows.join(", ")};`;
+      }
+      if (filters.length > 0) {
+        css += `\n  filter: ${filters.join(" ")};`;
+      }
+      
+      // Stroke (외곽선) 추가
+      if (shape.strokeWidth !== undefined && shape.strokeWidth > 0) {
+        css += `\n  border: ${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"};`;
+      }
+      
       css += "\n}";
       return css;
     };
@@ -287,10 +458,49 @@ function App() {
     
     const getShapeReact = (shape: Shape) => {
       if (shape.type === "triangle") {
-        return `  <svg\n    style={{\n      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n    }}\n  >\n    <polygon\n      points={\`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}\`}\n      fill='${shape.color}'\n    />\n  </svg>`;
+        let svgStyle = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},`;
+        
+        // Opacity 추가
+        if (shape.opacity !== undefined) {
+          svgStyle += `\n      opacity: ${shape.opacity},`;
+        }
+        
+        // Shadow와 Glow 효과 추가 (SVG의 경우 filter 사용)
+        const filters: string[] = [];
+        
+        if (shape.shadowType && shape.shadowType !== "none" && shape.shadowType === "outer") {
+          const offsetX = shape.shadowOffsetX ?? 4;
+          const offsetY = shape.shadowOffsetY ?? 4;
+          const blur = shape.shadowBlur ?? 8;
+          const color = shape.shadowColor ?? "rgba(0, 0, 0, 0.3)";
+          filters.push(`drop-shadow(${offsetX}px ${offsetY}px ${blur}px ${color})`);
+        }
+        
+        // Glow 효과 추가
+        if (shape.glowEnabled) {
+          const glowColor = shape.glowColor ?? shape.color;
+          const glowBlur = shape.glowBlur ?? 20;
+          filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+        }
+        
+        if (filters.length > 0) {
+          svgStyle += `\n      filter: '${filters.join(" ")}',`;
+        }
+        
+        let polygonProps = "";
+        if (shape.strokeWidth !== undefined && shape.strokeWidth > 0) {
+          polygonProps = `\n      stroke='${shape.strokeColor ?? "#000000"}'\n      strokeWidth={${shape.strokeWidth}}`;
+        }
+        
+        return `  <svg\n    style={{\n${svgStyle}\n    }}\n  >\n    <polygon\n      points={\`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}\`}\n      fill='${shape.color}'${polygonProps}\n    />\n  </svg>`;
       }
       
       let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',`;
+      
+      // Opacity 추가
+      if (shape.opacity !== undefined) {
+        style += `\n      opacity: ${shape.opacity},`;
+      }
       
       // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
       if (shape.borderRadius !== undefined && shape.type === "rectangle") {
@@ -323,6 +533,57 @@ function App() {
         }
       }
       
+      // Shadow와 Glow 효과 추가
+      const useClipPath = isClipPathShape(shape.type);
+      const shadows: string[] = [];
+      const filters: string[] = [];
+      
+      if (shape.shadowType && shape.shadowType !== "none") {
+        const offsetX = shape.shadowOffsetX ?? 4;
+        const offsetY = shape.shadowOffsetY ?? 4;
+        const blur = shape.shadowBlur ?? 8;
+        const color = shape.shadowColor ?? "rgba(0, 0, 0, 0.3)";
+        
+        if (useClipPath) {
+          // clip-path를 사용하는 도형은 drop-shadow filter 사용 (outer shadow만 지원)
+          if (shape.shadowType === "outer") {
+            filters.push(`drop-shadow(${offsetX}px ${offsetY}px ${blur}px ${color})`);
+          }
+        } else {
+          // 일반 도형은 box-shadow 사용
+          if (shape.shadowType === "inner") {
+            shadows.push(`inset ${offsetX}px ${offsetY}px ${blur}px ${color}`);
+          } else {
+            shadows.push(`${offsetX}px ${offsetY}px ${blur}px ${color}`);
+          }
+        }
+      }
+
+      // Glow 효과 추가
+      if (shape.glowEnabled) {
+        const glowColor = shape.glowColor ?? shape.color;
+        const glowBlur = shape.glowBlur ?? 20;
+        
+        if (useClipPath) {
+          filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+        } else {
+          shadows.push(`0 0 ${glowBlur}px ${glowColor}`);
+        }
+      }
+
+      // Shadow와 filter 적용
+      if (shadows.length > 0) {
+        style += `\n      boxShadow: '${shadows.join(", ")}',`;
+      }
+      if (filters.length > 0) {
+        style += `\n      filter: '${filters.join(" ")}',`;
+      }
+      
+      // Stroke (외곽선) 추가
+      if (shape.strokeWidth !== undefined && shape.strokeWidth > 0) {
+        style += `\n      border: '${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"}',`;
+      }
+      
       return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
     };
     
@@ -343,16 +604,22 @@ function App() {
       if (textColorMenuRef.current && !textColorMenuRef.current.contains(event.target as Node)) {
         setShowTextColorMenu(false);
       }
+      if (effectsMenuRef.current && !effectsMenuRef.current.contains(event.target as Node)) {
+        setShowEffectsMenu(false);
+      }
+      if (strokeMenuRef.current && !strokeMenuRef.current.contains(event.target as Node)) {
+        setShowStrokeMenu(false);
+      }
     };
 
-    if (showShapeMenu || showShapeColorMenu || showTextColorMenu) {
+    if (showShapeMenu || showShapeColorMenu || showTextColorMenu || showEffectsMenu || showStrokeMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showShapeMenu, showShapeColorMenu, showTextColorMenu]);
+  }, [showShapeMenu, showShapeColorMenu, showTextColorMenu, showEffectsMenu, showStrokeMenu]);
 
   // 드롭다운이 열릴 때 자동으로 color input 클릭
   useEffect(() => {
@@ -461,6 +728,18 @@ function App() {
     if (showTextColorMenu) {
       setShowTextColorMenu(false);
     }
+    if (showEffectsMenu) {
+      setShowEffectsMenu(false);
+    }
+    if (showOpacityControl) {
+      setShowOpacityControl(false);
+    }
+    if (showGlowControl) {
+      setShowGlowControl(false);
+    }
+    if (showStrokeMenu) {
+      setShowStrokeMenu(false);
+    }
     
     // 도형이나 리사이즈 핸들을 클릭한 경우 무시
     // (handleMouseDown에서 stopPropagation이 호출되므로 여기까지 오지 않음)
@@ -539,7 +818,18 @@ function App() {
     height?: number,
     x?: number,
     y?: number,
-    borderRadius?: number
+    borderRadius?: number,
+    shadowType?: "none" | "outer" | "inner",
+    shadowColor?: string,
+    shadowBlur?: number,
+    shadowOffsetX?: number,
+    shadowOffsetY?: number,
+    opacity?: number,
+    glowEnabled?: boolean,
+    glowColor?: string,
+    glowBlur?: number,
+    strokeColor?: string,
+    strokeWidth?: number
   ) => {
     if (selectedShape) {
       // 선택된 도형의 현재 값을 기본값으로 사용 (state가 아닌 실제 도형 데이터 사용)
@@ -563,6 +853,17 @@ function App() {
         x: newX,
         y: newY,
         borderRadius: newBorderRadius,
+        shadowType: shadowType !== undefined ? shadowType : selectedShape.shadowType,
+        shadowColor: shadowColor !== undefined ? shadowColor : selectedShape.shadowColor,
+        shadowBlur: shadowBlur !== undefined ? shadowBlur : selectedShape.shadowBlur,
+        shadowOffsetX: shadowOffsetX !== undefined ? shadowOffsetX : selectedShape.shadowOffsetX,
+        shadowOffsetY: shadowOffsetY !== undefined ? shadowOffsetY : selectedShape.shadowOffsetY,
+        opacity: opacity !== undefined ? opacity : selectedShape.opacity,
+        glowEnabled: glowEnabled !== undefined ? glowEnabled : selectedShape.glowEnabled,
+        glowColor: glowColor !== undefined ? glowColor : selectedShape.glowColor,
+        glowBlur: glowBlur !== undefined ? glowBlur : selectedShape.glowBlur,
+        strokeColor: strokeColor !== undefined ? strokeColor : selectedShape.strokeColor,
+        strokeWidth: strokeWidth !== undefined ? strokeWidth : selectedShape.strokeWidth,
       };
 
       setShapes(
@@ -1100,9 +1401,19 @@ function App() {
                   )}
                 </div>
                 {/* Effects 버튼 */}
-                <div className="relative">
+                <div className="relative" ref={effectsMenuRef}>
                   <button 
-                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                    onClick={() => {
+                      if (!isNonTrianglePolygon(selectedShape.type)) {
+                        setShowEffectsMenu(!showEffectsMenu);
+                      }
+                    }}
+                    disabled={isNonTrianglePolygon(selectedShape.type)}
+                    className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                      isNonTrianglePolygon(selectedShape.type)
+                        ? "text-gray-500 cursor-not-allowed opacity-50"
+                        : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                    }`}
                   >
                     <img src={effectsIcon} alt="Effects" className="w-auto h-4" />
                     <span>Effect</span>
@@ -1110,12 +1421,208 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
+                  {showEffectsMenu && !isNonTrianglePolygon(selectedShape.type) && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[200px]">
+                      <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
+                        Shadow Effects
+                      </div>
+                      <button
+                        onClick={() => {
+                          updateSelectedShape(undefined, undefined, undefined, undefined, undefined, undefined, "none");
+                          setShowEffectsMenu(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-800 dark:hover:bg-gray-800 ${
+                          selectedShape?.shadowType === "none" || !selectedShape?.shadowType
+                            ? "text-pink-300"
+                            : "text-white"
+                        }`}
+                      >
+                        None
+                      </button>
+                      <button
+                        onClick={() => {
+                          updateSelectedShape(
+                            undefined, undefined, undefined, undefined, undefined, undefined,
+                            "outer",
+                            selectedShape?.shadowColor ?? "rgba(0, 0, 0, 0.3)",
+                            selectedShape?.shadowBlur ?? 8,
+                            selectedShape?.shadowOffsetX ?? 4,
+                            selectedShape?.shadowOffsetY ?? 4
+                          );
+                          setShowEffectsMenu(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-800 dark:hover:bg-gray-800 ${
+                          selectedShape?.shadowType === "outer"
+                            ? "text-pink-300"
+                            : "text-white"
+                        }`}
+                      >
+                        Outer Shadow
+                      </button>
+                      <button
+                        onClick={() => {
+                          updateSelectedShape(
+                            undefined, undefined, undefined, undefined, undefined, undefined,
+                            "inner",
+                            selectedShape?.shadowColor ?? "rgba(0, 0, 0, 0.3)",
+                            selectedShape?.shadowBlur ?? 8,
+                            selectedShape?.shadowOffsetX ?? 4,
+                            selectedShape?.shadowOffsetY ?? 4
+                          );
+                          setShowEffectsMenu(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-800 dark:hover:bg-gray-800 ${
+                          selectedShape?.shadowType === "inner"
+                            ? "text-pink-300"
+                            : "text-white"
+                        }`}
+                      >
+                        Inner Shadow
+                      </button>
+                      <div className="px-3 py-1 text-xs text-gray-400 border-t border-b border-pink-300/10 mt-1">
+                        Other Effects
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowOpacityControl(!showOpacityControl);
+                          setShowGlowControl(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 dark:hover:bg-gray-800 text-white flex items-center justify-between"
+                      >
+                        <span>Opacity</span>
+                        <span className="text-xs text-gray-400">
+                          {selectedShape?.opacity !== undefined ? Math.round(selectedShape.opacity * 100) : 100}%
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowGlowControl(!showGlowControl);
+                          setShowOpacityControl(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-800 dark:hover:bg-gray-800 ${
+                          selectedShape?.glowEnabled
+                            ? "text-pink-300"
+                            : "text-white"
+                        }`}
+                      >
+                        Glow
+                      </button>
+                      {showOpacityControl && (
+                        <div className="px-3 py-2 border-t border-pink-300/10 bg-gray-900">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs text-white">Opacity:</span>
+                            <span className="text-xs text-gray-400">
+                              {selectedShape?.opacity !== undefined ? Math.round(selectedShape.opacity * 100) : 100}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={selectedShape?.opacity ?? 1}
+                            onChange={(e) => {
+                              updateSelectedShape(
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined,
+                                parseFloat(e.target.value)
+                              );
+                            }}
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-300"
+                          />
+                          <button
+                            onClick={() => {
+                              updateSelectedShape(
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined,
+                                1
+                              );
+                            }}
+                            className="mt-2 w-full px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-white rounded"
+                          >
+                            Reset to 100%
+                          </button>
+                        </div>
+                      )}
+                      {showGlowControl && (
+                        <div className="px-3 py-2 border-t border-pink-300/10 bg-gray-900">
+                          <div className="flex items-center gap-2 mb-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedShape?.glowEnabled ?? false}
+                              onChange={(e) => {
+                                updateSelectedShape(
+                                  undefined, undefined, undefined, undefined, undefined, undefined,
+                                  undefined, undefined, undefined, undefined, undefined,
+                                  undefined,
+                                  e.target.checked,
+                                  selectedShape?.glowColor ?? selectedShape?.color ?? DEFAULT_SHAPE_COLOR,
+                                  selectedShape?.glowBlur ?? 20
+                                );
+                              }}
+                              className="accent-pink-300"
+                            />
+                            <span className="text-xs text-white">Enable Glow</span>
+                          </div>
+                          {selectedShape?.glowEnabled && (
+                            <>
+                              <div className="mb-2">
+                                <label className="text-xs text-white block mb-1">Glow Color:</label>
+                                <input
+                                  type="color"
+                                  value={selectedShape?.glowColor ?? selectedShape?.color ?? DEFAULT_SHAPE_COLOR}
+                                  onChange={(e) => {
+                                    updateSelectedShape(
+                                      undefined, undefined, undefined, undefined, undefined, undefined,
+                                      undefined, undefined, undefined, undefined, undefined,
+                                      undefined,
+                                      true,
+                                      e.target.value,
+                                      selectedShape?.glowBlur ?? 20
+                                    );
+                                  }}
+                                  className="w-full h-8 cursor-pointer"
+                                />
+                              </div>
+                              <div className="mb-2">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <label className="text-xs text-white">Blur:</label>
+                                  <span className="text-xs text-gray-400">
+                                    {selectedShape?.glowBlur ?? 20}px
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="5"
+                                  max="50"
+                                  step="1"
+                                  value={selectedShape?.glowBlur ?? 20}
+                                  onChange={(e) => {
+                                    updateSelectedShape(
+                                      undefined, undefined, undefined, undefined, undefined, undefined,
+                                      undefined, undefined, undefined, undefined, undefined,
+                                      undefined,
+                                      true,
+                                      selectedShape?.glowColor ?? selectedShape?.color ?? DEFAULT_SHAPE_COLOR,
+                                      parseInt(e.target.value)
+                                    );
+                                  }}
+                                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-300"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               {/* 두 번째 줄: Stroke, Corner Radius */}
               <div className="flex items-center gap-2">
-                <div className="relative">
+                <div className="relative" ref={strokeMenuRef}>
                   <button 
+                    onClick={() => setShowStrokeMenu(!showStrokeMenu)}
                     className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
                   >
                     <img src={strokeIcon} alt="Stroke" className="w-auto h-4" />
@@ -1124,6 +1631,70 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
+                  {showStrokeMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[220px]">
+                      <div className="px-3 py-2">
+                        <div className="mb-3">
+                          <label className="text-xs text-white block mb-2">Stroke Color:</label>
+                          <input
+                            type="color"
+                            value={selectedShape?.strokeColor ?? "#000000"}
+                            onChange={(e) => {
+                              updateSelectedShape(
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined,
+                                e.target.value,
+                                selectedShape?.strokeWidth ?? 1
+                              );
+                            }}
+                            className="w-full h-10 cursor-pointer"
+                          />
+                        </div>
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs text-white">Stroke Width:</label>
+                            <span className="text-xs text-gray-400">
+                              {selectedShape?.strokeWidth ?? 0}px
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="20"
+                            step="1"
+                            value={selectedShape?.strokeWidth ?? 0}
+                            onChange={(e) => {
+                              const width = parseInt(e.target.value);
+                              updateSelectedShape(
+                                undefined, undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined, undefined,
+                                undefined, undefined, undefined, undefined,
+                                selectedShape?.strokeColor ?? "#000000",
+                                width
+                              );
+                            }}
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-300"
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            updateSelectedShape(
+                              undefined, undefined, undefined, undefined, undefined, undefined,
+                              undefined, undefined, undefined, undefined, undefined,
+                              undefined, undefined, undefined, undefined,
+                              undefined,
+                              0
+                            );
+                            setShowStrokeMenu(false);
+                          }}
+                          className="w-full px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-white rounded"
+                        >
+                          Remove Stroke
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {/* Corner Radius */}
                 <div className="flex flex-col gap-2">
@@ -1279,25 +1850,89 @@ function App() {
                     pointerEvents: "auto",
                   }}
                 >
-                  {shape.type === "triangle" ? (
+                  {shape.type === "triangle" || isClipPathShape(shape.type) ? (
                     <svg
                       style={{
                         width: "100%",
                         height: "100%",
+                        opacity: shape.opacity !== undefined ? shape.opacity : undefined,
+                        filter: (() => {
+                          const filters: string[] = [];
+                          if (shape.shadowType && shape.shadowType !== "none" && shape.shadowType === "outer") {
+                            filters.push(`drop-shadow(${shape.shadowOffsetX ?? 4}px ${shape.shadowOffsetY ?? 4}px ${shape.shadowBlur ?? 8}px ${shape.shadowColor ?? "rgba(0, 0, 0, 0.3)"})`);
+                          }
+                          if (shape.glowEnabled) {
+                            const glowColor = shape.glowColor ?? shape.color;
+                            const glowBlur = shape.glowBlur ?? 20;
+                            filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+                          }
+                          return filters.length > 0 ? filters.join(" ") : undefined;
+                        })(),
                       }}
                     >
-                      <polygon
-                        points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
-                        fill={shape.color}
-                        stroke={isSelected ? "#f9a8d4" : "none"}
-                        strokeWidth={isSelected ? "2" : "0"}
-                      />
+                      {shape.type === "triangle" ? (
+                        <polygon
+                          points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
+                          fill={shape.color}
+                          stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? (shape.strokeColor ?? "#000000")
+                            : (isSelected ? "#f9a8d4" : "none")}
+                          strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? shape.strokeWidth 
+                            : (isSelected ? "2" : "0")}
+                        />
+                      ) : shape.type === "diamond" ? (
+                        <polygon
+                          points={`${shape.width / 2},0 ${shape.width},${shape.height / 2} ${shape.width / 2},${shape.height} 0,${shape.height / 2}`}
+                          fill={shape.color}
+                          stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? (shape.strokeColor ?? "#000000")
+                            : (isSelected ? "#f9a8d4" : "none")}
+                          strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? shape.strokeWidth 
+                            : (isSelected ? "2" : "0")}
+                        />
+                      ) : shape.type === "star" ? (
+                        <polygon
+                          points={`${shape.width * 0.5},0 ${shape.width * 0.61},${shape.height * 0.35} ${shape.width * 0.98},${shape.height * 0.35} ${shape.width * 0.68},${shape.height * 0.57} ${shape.width * 0.79},${shape.height * 0.91} ${shape.width * 0.5},${shape.height * 0.7} ${shape.width * 0.21},${shape.height * 0.91} ${shape.width * 0.32},${shape.height * 0.57} ${shape.width * 0.02},${shape.height * 0.35} ${shape.width * 0.39},${shape.height * 0.35}`}
+                          fill={shape.color}
+                          stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? (shape.strokeColor ?? "#000000")
+                            : (isSelected ? "#f9a8d4" : "none")}
+                          strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? shape.strokeWidth 
+                            : (isSelected ? "2" : "0")}
+                        />
+                      ) : shape.type === "hexagon" ? (
+                        <polygon
+                          points={`${shape.width * 0.3},0 ${shape.width * 0.7},0 ${shape.width},${shape.height * 0.5} ${shape.width * 0.7},${shape.height} ${shape.width * 0.3},${shape.height} 0,${shape.height * 0.5}`}
+                          fill={shape.color}
+                          stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? (shape.strokeColor ?? "#000000")
+                            : (isSelected ? "#f9a8d4" : "none")}
+                          strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? shape.strokeWidth 
+                            : (isSelected ? "2" : "0")}
+                        />
+                      ) : shape.type === "pentagon" ? (
+                        <polygon
+                          points={`${shape.width * 0.5},0 ${shape.width},${shape.height * 0.38} ${shape.width * 0.82},${shape.height} ${shape.width * 0.18},${shape.height} 0,${shape.height * 0.38}`}
+                          fill={shape.color}
+                          stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? (shape.strokeColor ?? "#000000")
+                            : (isSelected ? "#f9a8d4" : "none")}
+                          strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                            ? shape.strokeWidth 
+                            : (isSelected ? "2" : "0")}
+                        />
+                      ) : null}
                     </svg>
                   ) : (
                     <div
                       style={{
                         ...getShapeStyle(shape),
-                        border: isSelected ? "2px solid #f9a8d4" : "none",
+                        outline: isSelected ? "2px solid #f9a8d4" : "none",
+                        outlineOffset: isSelected ? (shape.strokeWidth && shape.strokeWidth > 0 ? `-${shape.strokeWidth + 2}px` : "-2px") : "0",
                         cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
                         userSelect: "none",
                       }}
