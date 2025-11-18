@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 // @ts-ignore
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 // @ts-ignore
@@ -22,7 +22,7 @@ import alignLeftIcon from "./assets/align_left.png";
 import alignCenterIcon from "./assets/align_center.png";
 import alignRightIcon from "./assets/align_right.png";
 
-type ShapeType = "rectangle" | "roundedRectangle" | "circle" | "ellipse" | "parallelogram" | "star" | "triangle" | "diamond" | "hexagon" | "pentagon";
+type ShapeType = "rectangle" | "roundedRectangle" | "circle" | "ellipse" | "parallelogram" | "star" | "triangle" | "diamond" | "hexagon" | "pentagon" | "image";
 
 interface Shape {
   id: number;
@@ -44,6 +44,7 @@ interface Shape {
   glowBlur?: number;
   strokeColor?: string;
   strokeWidth?: number;
+  imageUrl?: string;
 }
 
 interface FileItem {
@@ -93,6 +94,7 @@ function App() {
   const effectsMenuRef = useRef<HTMLDivElement>(null);
   const strokeMenuRef = useRef<HTMLDivElement>(null);
   const borderRadiusInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // 플레이스홀더 파일 목록
   const [files] = useState<FileItem[]>([
@@ -293,8 +295,8 @@ function App() {
     }
   };
 
-  // XML 코드 생성
-  const generateXML = () => {
+  // XML 코드 생성 (메모이제이션)
+  const generateXML = useMemo(() => {
     if (shapes.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
     
     const xmlParts = shapes.map((shape) => {
@@ -335,22 +337,35 @@ function App() {
         strokeAttr = ` strokeColor="${shape.strokeColor ?? "#000000"}" strokeWidth="${shape.strokeWidth}"`;
       }
       
+      let imageAttr = "";
+      if (shape.type === "image" && shape.imageUrl) {
+        // base64 이미지는 너무 길 수 있으므로 간단히 표시
+        imageAttr = ` imageUrl="[image data]"`;
+      }
+      
       return `  <shape id="${shape.id}" type="${shape.type}">
     <position x="${shape.x}" y="${shape.y}" />
     <size width="${shape.width}" height="${shape.height}" />
-    <style color="${shape.color}" borderRadius="${borderRadiusValue}"${shadowAttr}${opacityAttr}${glowAttr}${strokeAttr} />
+    <style color="${shape.color}" borderRadius="${borderRadiusValue}"${shadowAttr}${opacityAttr}${glowAttr}${strokeAttr}${imageAttr} />
   </shape>`;
     });
     
     return `<root>\n${xmlParts.join("\n")}\n</root>`;
-  };
+  }, [shapes]);
 
-  // CSS 코드 생성
-  const generateCSS = () => {
+  // CSS 코드 생성 (메모이제이션)
+  const generateCSS = useMemo(() => {
     if (shapes.length === 0) return "/* 코드가 여기에 표시됩니다 */";
     
     const getShapeCSS = (shape: Shape) => {
-      let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
+      let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;`;
+      
+      // 이미지 타입인 경우
+      if (shape.type === "image" && shape.imageUrl) {
+        css += `\n  background-image: url(${shape.imageUrl});\n  background-size: cover;\n  background-position: center;\n  background-repeat: no-repeat;`;
+      } else {
+        css += `\n  background-color: ${shape.color};`;
+      }
       
       // Opacity 추가
       if (shape.opacity !== undefined) {
@@ -450,10 +465,10 @@ function App() {
     const cssParts = shapes.map((shape) => getShapeCSS(shape));
     
     return cssParts.join("\n\n");
-  };
+  }, [shapes]);
 
-  // React 코드 생성
-  const generateReact = () => {
+  // React 코드 생성 (메모이제이션)
+  const generateReact = useMemo(() => {
     if (shapes.length === 0) return "// 코드가 여기에 표시됩니다";
     
     const getShapeReact = (shape: Shape) => {
@@ -495,7 +510,14 @@ function App() {
         return `  <svg\n    style={{\n${svgStyle}\n    }}\n  >\n    <polygon\n      points={\`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}\`}\n      fill='${shape.color}'${polygonProps}\n    />\n  </svg>`;
       }
       
-      let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      backgroundColor: '${shape.color}',`;
+      let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},`;
+      
+      // 이미지 타입인 경우
+      if (shape.type === "image" && shape.imageUrl) {
+        style += `\n      backgroundImage: 'url(${shape.imageUrl})',\n      backgroundSize: 'cover',\n      backgroundPosition: 'center',\n      backgroundRepeat: 'no-repeat',`;
+      } else {
+        style += `\n      backgroundColor: '${shape.color}',`;
+      }
       
       // Opacity 추가
       if (shape.opacity !== undefined) {
@@ -590,7 +612,7 @@ function App() {
     const reactParts = shapes.map((shape) => getShapeReact(shape));
     
     return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
-  };
+  }, [shapes]);
 
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
@@ -1288,9 +1310,75 @@ function App() {
             </div>
 
             {/* 이미지 추가 버튼 */}
-            <button className="p-3 bg-black dark:bg-black rounded flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 transition-colors cursor-pointer">
-              <img src={newimageIcon} alt="New Image" className="w-14 h-auto" />
-            </button>
+            <div>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && canvasRef.current) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const originalImageUrl = event.target?.result as string;
+                      const img = new Image();
+                      img.onload = () => {
+                        const rect = canvasRef.current?.getBoundingClientRect();
+                        if (rect) {
+                          // 이미지의 원본 비율 유지하면서 적절한 크기로 조정
+                          const maxWidth = 400;
+                          const maxHeight = 400;
+                          let width = img.width;
+                          let height = img.height;
+                          
+                          // 비율 유지하면서 최대 크기로 조정
+                          if (width > maxWidth || height > maxHeight) {
+                            const ratio = Math.min(maxWidth / width, maxHeight / height);
+                            width = width * ratio;
+                            height = height * ratio;
+                          }
+                          
+                          // Canvas를 사용하여 이미지 압축
+                          const canvas = document.createElement('canvas');
+                          canvas.width = width;
+                          canvas.height = height;
+                          const ctx = canvas.getContext('2d');
+                          if (ctx) {
+                            ctx.drawImage(img, 0, 0, width, height);
+                            // JPEG로 압축 (품질 0.8)
+                            const compressedImageUrl = canvas.toDataURL('image/jpeg', 0.8);
+                            
+                            const newShape: Shape = {
+                              id: Date.now(),
+                              type: "image",
+                              x: Math.max(0, (rect.width - width) / 2),
+                              y: Math.max(0, (rect.height - height) / 2),
+                              width: Math.max(50, width),
+                              height: Math.max(50, height),
+                              color: DEFAULT_SHAPE_COLOR,
+                              imageUrl: compressedImageUrl,
+                            };
+                            setShapes([...shapes, newShape]);
+                            setSelectedShape(newShape);
+                          }
+                        }
+                      };
+                      img.src = originalImageUrl;
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                  // 같은 파일을 다시 선택할 수 있도록 reset
+                  e.target.value = "";
+                }}
+              />
+              <button 
+                onClick={() => imageInputRef.current?.click()}
+                className="p-3 bg-black dark:bg-black rounded flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                <img src={newimageIcon} alt="New Image" className="w-14 h-auto" />
+              </button>
+            </div>
           </div>
 
           {/* 구분선 */}
@@ -1375,8 +1463,17 @@ function App() {
               <div className="flex items-center gap-2">
                 <div className="relative" ref={shapeColorMenuRef}>
                   <button 
-                    onClick={() => setShowShapeColorMenu(!showShapeColorMenu)}
-                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                    onClick={() => {
+                      if (selectedShape.type !== "image") {
+                        setShowShapeColorMenu(!showShapeColorMenu);
+                      }
+                    }}
+                    disabled={selectedShape.type === "image"}
+                    className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                      selectedShape.type === "image"
+                        ? "text-gray-500 cursor-not-allowed opacity-50"
+                        : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                    }`}
                   >
                     <img src={shapeColorIcon} alt="Shape Color" className="w-auto h-4" />
                     <span>Fill Color</span>
@@ -1384,7 +1481,7 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {showShapeColorMenu && (
+                  {showShapeColorMenu && selectedShape.type !== "image" && (
                     <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3">
                       <input
                         id="shape-color-input-in-dropdown"
@@ -1927,6 +2024,35 @@ function App() {
                         />
                       ) : null}
                     </svg>
+                  ) : shape.type === "image" ? (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        backgroundImage: `url(${shape.imageUrl})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        backgroundRepeat: "no-repeat",
+                        opacity: shape.opacity !== undefined ? shape.opacity : undefined,
+                        border: shape.strokeWidth && shape.strokeWidth > 0 
+                          ? `${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"}`
+                          : (isSelected ? "2px solid #f9a8d4" : "none"),
+                        cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                        userSelect: "none",
+                        filter: (() => {
+                          const filters: string[] = [];
+                          if (shape.shadowType && shape.shadowType !== "none" && shape.shadowType === "outer") {
+                            filters.push(`drop-shadow(${shape.shadowOffsetX ?? 4}px ${shape.shadowOffsetY ?? 4}px ${shape.shadowBlur ?? 8}px ${shape.shadowColor ?? "rgba(0, 0, 0, 0.3)"})`);
+                          }
+                          if (shape.glowEnabled) {
+                            const glowColor = shape.glowColor ?? shape.color;
+                            const glowBlur = shape.glowBlur ?? 20;
+                            filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+                          }
+                          return filters.length > 0 ? filters.join(" ") : undefined;
+                        })(),
+                      }}
+                    />
                   ) : (
                     <div
                       style={{
@@ -2152,7 +2278,7 @@ function App() {
             }}
             showLineNumbers={false}
           >
-            {codeView === "xml" ? generateXML() : codeView === "css" ? generateCSS() : generateReact()}
+            {codeView === "xml" ? generateXML : codeView === "css" ? generateCSS : generateReact}
           </SyntaxHighlighter>
         </div>
       </div>
