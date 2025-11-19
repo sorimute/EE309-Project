@@ -34,6 +34,7 @@ interface Shape {
   width: number;
   height: number;
   color: string;
+  zIndex: number;
   borderRadius?: number;
   shadowType?: "none" | "outer" | "inner";
   shadowColor?: string;
@@ -159,7 +160,11 @@ function App() {
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [codeView, setCodeView] = useState<"xml" | "css" | "react">("xml");
+  const [codeContent, setCodeContent] = useState<string>("");
+  const [isCodeEditing, setIsCodeEditing] = useState<boolean>(false);
   const [_currentFileName, setCurrentFileName] = useState<string>("React.tsx");
+  const [showBringForwardMenu, setShowBringForwardMenu] = useState(false);
+  const [showSendBackwardMenu, setShowSendBackwardMenu] = useState(false);
   const [openedFiles, setOpenedFiles] = useState<string[]>(["React.tsx"]); // 열린 파일 목록
   const [activeFile, setActiveFile] = useState<string>("React.tsx"); // 현재 활성화된 파일
   const [texts, setTexts] = useState<Text[]>([]);
@@ -177,6 +182,8 @@ function App() {
   const strokeMenuRef = useRef<HTMLDivElement>(null);
   const borderRadiusInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const bringForwardMenuRef = useRef<HTMLDivElement>(null);
+  const sendBackwardMenuRef = useRef<HTMLDivElement>(null);
 
   // 플레이스홀더 파일 목록
   const [files] = useState<FileItem[]>([
@@ -263,8 +270,8 @@ function App() {
       baseStyle.border = `${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"}`;
     }
 
-    // rectangle 타입의 경우 사용자가 설정한 borderRadius 사용
-    if (shape.type === "rectangle" && shape.borderRadius !== undefined) {
+    // roundedRectangle 타입의 경우 사용자가 설정한 borderRadius 사용
+    if (shape.type === "roundedRectangle" && shape.borderRadius !== undefined) {
       return { ...baseStyle, borderRadius: `${shape.borderRadius}px` };
     }
 
@@ -428,7 +435,7 @@ function App() {
       return `  <shape id="${shape.id}" type="${shape.type}">
     <position x="${shape.x}" y="${shape.y}" />
     <size width="${shape.width}" height="${shape.height}" />
-    <style color="${shape.color}" borderRadius="${borderRadiusValue}"${shadowAttr}${opacityAttr}${glowAttr}${strokeAttr}${imageAttr} />
+    <style color="${shape.color}" zIndex="${shape.zIndex}" borderRadius="${borderRadiusValue}"${shadowAttr}${opacityAttr}${glowAttr}${strokeAttr}${imageAttr} />
   </shape>`;
     });
     
@@ -449,7 +456,7 @@ function App() {
   const generateCSS = useMemo(() => {
     if (shapes.length === 0 && texts.length === 0 ) return "/* 코드가 여기에 표시됩니다 */";
     const getShapeCSS = (shape: Shape) => {
-      let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;`;
+      let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  z-index: ${shape.zIndex};`;
       
       // 이미지 타입인 경우
       if (shape.type === "image" && shape.imageUrl) {
@@ -465,8 +472,8 @@ function App() {
       
       const useClipPath = isClipPathShape(shape.type);
       
-      // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
-      if (shape.borderRadius !== undefined && shape.type === "rectangle") {
+      // roundedRectangle 타입의 경우 사용자가 설정한 borderRadius 사용
+      if (shape.type === "roundedRectangle" && shape.borderRadius !== undefined) {
         css += `\n  border-radius: ${shape.borderRadius}px;`;
       } else {
         // 도형 타입에 따른 기본 스타일
@@ -569,7 +576,7 @@ function App() {
     
     const getShapeReact = (shape: Shape) => {
       if (shape.type === "triangle") {
-        let svgStyle = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},`;
+        let svgStyle = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      zIndex: ${shape.zIndex},`;
         
         // Opacity 추가
         if (shape.opacity !== undefined) {
@@ -606,7 +613,7 @@ function App() {
         return `  <svg\n    style={{\n${svgStyle}\n    }}\n  >\n    <polygon\n      points={\`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}\`}\n      fill='${shape.color}'${polygonProps}\n    />\n  </svg>`;
       }
       
-      let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},`;
+      let style = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      zIndex: ${shape.zIndex},`;
       
       // 이미지 타입인 경우
       if (shape.type === "image" && shape.imageUrl) {
@@ -620,8 +627,8 @@ function App() {
         style += `\n      opacity: ${shape.opacity},`;
       }
       
-      // borderRadius가 명시적으로 설정된 경우 (rectangle 타입)
-      if (shape.borderRadius !== undefined && shape.type === "rectangle") {
+      // roundedRectangle 타입의 경우 사용자가 설정한 borderRadius 사용
+      if (shape.type === "roundedRectangle" && shape.borderRadius !== undefined) {
         style += `\n      borderRadius: ${shape.borderRadius},`;
       } else {
         // 도형 타입에 따른 기본 스타일
@@ -715,7 +722,372 @@ function App() {
     const reactParts = [...shapeParts, ...textParts];
     
     return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
-  }, [shapes]);
+  }, [shapes, texts]);
+
+  // XML 코드 파서
+  const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
+    try {
+      const parsedShapes: Shape[] = [];
+      const parsedTexts: Text[] = [];
+      
+      // Shape 파싱
+      const shapeRegex = /<shape id="(\d+)" type="([^"]+)">\s*<position x="(\d+)" y="(\d+)" \/>\s*<size width="(\d+)" height="(\d+)" \/>\s*<style color="([^"]+)"(?: zIndex="(\d+)")?(?: borderRadius="([^"]+)")(?: shadowType="([^"]+)" shadowColor="([^"]+)" shadowBlur="(\d+)" shadowOffsetX="(\d+)" shadowOffsetY="(\d+)")?(?: opacity="([^"]+)")?(?: glowEnabled="([^"]+)" glowColor="([^"]+)" glowBlur="(\d+)")?(?: strokeColor="([^"]+)" strokeWidth="(\d+)")? \/>\s*<\/shape>/g;
+      let match;
+      
+      while ((match = shapeRegex.exec(xml)) !== null) {
+        const id = parseInt(match[1]);
+        const type = match[2] as ShapeType;
+        const x = parseInt(match[3]);
+        const y = parseInt(match[4]);
+        const width = parseInt(match[5]);
+        const height = parseInt(match[6]);
+        const color = match[7];
+        const zIndex = match[8] ? parseInt(match[8]) : 0;
+        const borderRadius = match[9] ? (match[9] === "50%" ? undefined : parseInt(match[9])) : undefined;
+        
+        const shape: Shape = {
+          id,
+          type,
+          x,
+          y,
+          width,
+          height,
+          color,
+          zIndex,
+          borderRadius,
+        };
+        
+        if (match[10]) {
+          shape.shadowType = match[10] as "none" | "outer" | "inner";
+          shape.shadowColor = match[11];
+          shape.shadowBlur = parseInt(match[12]);
+          shape.shadowOffsetX = parseInt(match[13]);
+          shape.shadowOffsetY = parseInt(match[14]);
+        }
+        
+        if (match[15]) {
+          shape.opacity = parseFloat(match[15]);
+        }
+        
+        if (match[16] === "true") {
+          shape.glowEnabled = true;
+          shape.glowColor = match[17];
+          shape.glowBlur = parseInt(match[18]);
+        }
+        
+        if (match[19]) {
+          shape.strokeColor = match[19];
+          shape.strokeWidth = parseInt(match[20]);
+        }
+        
+        parsedShapes.push(shape);
+      }
+      
+      // Text 파싱
+      const textRegex = /<text id="(\d+)">\s*<position x="(\d+)" y="(\d+)" \/>\s*<size width="(\d+)" height="(\d+)" \/>\s*<content>([^<]*)<\/content>\s*<style fontSize="(\d+)" color="([^"]+)" fontFamily="([^"]+)" fontWeight="([^"]+)" fontStyle="([^"]+)" textAlign="([^"]+)" \/>\s*<\/text>/g;
+      
+      while ((match = textRegex.exec(xml)) !== null) {
+        const id = parseInt(match[1]);
+        const x = parseInt(match[2]);
+        const y = parseInt(match[3]);
+        const width = parseInt(match[4]);
+        const height = parseInt(match[5]);
+        const text = match[6];
+        const fontSize = parseInt(match[7]);
+        const color = match[8];
+        const fontFamily = match[9];
+        const fontWeight = match[10] as "normal" | "bold";
+        const fontStyle = match[11] as "normal" | "italic";
+        const textAlign = match[12] as "left" | "center" | "right";
+        
+        parsedTexts.push({
+          id,
+          x,
+          y,
+          width,
+          height,
+          text,
+          fontSize,
+          color,
+          fontFamily,
+          fontWeight,
+          fontStyle,
+          textAlign,
+        });
+      }
+      
+      return { shapes: parsedShapes, texts: parsedTexts };
+    } catch (error) {
+      console.error("XML 파싱 오류:", error);
+      return { shapes: [], texts: [] };
+    }
+  };
+
+  // CSS 코드 파서
+  const parseCSS = (css: string): { shapes: Shape[]; texts: Text[] } => {
+    try {
+      const parsedShapes: Shape[] = [];
+      const parsedTexts: Text[] = [];
+      
+      // Shape 파싱
+      const shapeRegex = /\.shape-(\d+)\s*\{([^}]+)\}/g;
+      let match;
+      
+      while ((match = shapeRegex.exec(css)) !== null) {
+        const id = parseInt(match[1]);
+        const styleContent = match[2];
+        
+        const leftMatch = styleContent.match(/left:\s*(\d+)px/);
+        const topMatch = styleContent.match(/top:\s*(\d+)px/);
+        const widthMatch = styleContent.match(/width:\s*(\d+)px/);
+        const heightMatch = styleContent.match(/height:\s*(\d+)px/);
+        const colorMatch = styleContent.match(/background-color:\s*([^;]+);/);
+        const zIndexMatch = styleContent.match(/z-index:\s*(\d+);/);
+        const borderRadiusMatch = styleContent.match(/border-radius:\s*([^;]+);/);
+        const opacityMatch = styleContent.match(/opacity:\s*([^;]+);/);
+        
+        if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
+        
+        const x = parseInt(leftMatch[1]);
+        const y = parseInt(topMatch[1]);
+        const width = parseInt(widthMatch[1]);
+        const height = parseInt(heightMatch[1]);
+        const color = colorMatch ? colorMatch[1].trim() : "#f9a8d4";
+        const zIndex = zIndexMatch ? parseInt(zIndexMatch[1]) : 0;
+        
+        // 타입 추론 (간단한 버전)
+        let type: ShapeType = "rectangle";
+        if (borderRadiusMatch) {
+          const br = borderRadiusMatch[1].trim();
+          if (br === "50%") {
+            type = width === height ? "circle" : "ellipse";
+          } else if (br !== "0" && br !== "0px") {
+            type = "roundedRectangle";
+          }
+        }
+        
+        const shape: Shape = {
+          id,
+          type,
+          x,
+          y,
+          width,
+          height,
+          color,
+          zIndex,
+        };
+        
+        if (borderRadiusMatch && borderRadiusMatch[1].trim() !== "50%") {
+          const br = borderRadiusMatch[1].trim();
+          if (br.endsWith("px")) {
+            shape.borderRadius = parseInt(br);
+          }
+        }
+        
+        if (opacityMatch) {
+          shape.opacity = parseFloat(opacityMatch[1].trim());
+        }
+        
+        parsedShapes.push(shape);
+      }
+      
+      // Text 파싱
+      const textRegex = /\.text-(\d+)\s*\{([^}]+)\}/g;
+      
+      while ((match = textRegex.exec(css)) !== null) {
+        const id = parseInt(match[1]);
+        const styleContent = match[2];
+        
+        const leftMatch = styleContent.match(/left:\s*(\d+)px/);
+        const topMatch = styleContent.match(/top:\s*(\d+)px/);
+        const widthMatch = styleContent.match(/width:\s*(\d+)px/);
+        const heightMatch = styleContent.match(/height:\s*(\d+)px/);
+        const fontSizeMatch = styleContent.match(/font-size:\s*(\d+)px/);
+        const colorMatch = styleContent.match(/color:\s*([^;]+);/);
+        const fontFamilyMatch = styleContent.match(/font-family:\s*([^;]+);/);
+        const fontWeightMatch = styleContent.match(/font-weight:\s*([^;]+);/);
+        const fontStyleMatch = styleContent.match(/font-style:\s*([^;]+);/);
+        const textAlignMatch = styleContent.match(/text-align:\s*([^;]+);/);
+        
+        if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
+        
+        parsedTexts.push({
+          id,
+          x: parseInt(leftMatch[1]),
+          y: parseInt(topMatch[1]),
+          width: parseInt(widthMatch[1]),
+          height: parseInt(heightMatch[1]),
+          text: "",
+          fontSize: fontSizeMatch ? parseInt(fontSizeMatch[1]) : 16,
+          color: colorMatch ? colorMatch[1].trim() : "#000000",
+          fontFamily: fontFamilyMatch ? fontFamilyMatch[1].trim() : "Arial",
+          fontWeight: (fontWeightMatch ? fontWeightMatch[1].trim() : "normal") as "normal" | "bold",
+          fontStyle: (fontStyleMatch ? fontStyleMatch[1].trim() : "normal") as "normal" | "italic",
+          textAlign: (textAlignMatch ? textAlignMatch[1].trim() : "left") as "left" | "center" | "right",
+        });
+      }
+      
+      return { shapes: parsedShapes, texts: parsedTexts };
+    } catch (error) {
+      console.error("CSS 파싱 오류:", error);
+      return { shapes: [], texts: [] };
+    }
+  };
+
+  // React 코드 파서
+  const parseReact = (react: string): { shapes: Shape[]; texts: Text[] } => {
+    try {
+      const parsedShapes: Shape[] = [];
+      const parsedTexts: Text[] = [];
+      
+      // Shape 파싱 (div)
+      const divRegex = /<div\s+className="shape-(\d+)"\s+style=\{\{([^}]+)\}\}\s*\/>/g;
+      let match;
+      
+      while ((match = divRegex.exec(react)) !== null) {
+        const id = parseInt(match[1]);
+        const styleContent = match[2];
+        
+        const leftMatch = styleContent.match(/left:\s*(\d+)/);
+        const topMatch = styleContent.match(/top:\s*(\d+)/);
+        const widthMatch = styleContent.match(/width:\s*(\d+)/);
+        const heightMatch = styleContent.match(/height:\s*(\d+)/);
+        const colorMatch = styleContent.match(/backgroundColor:\s*'([^']+)'/);
+        const zIndexMatch = styleContent.match(/zIndex:\s*(\d+)/);
+        const borderRadiusMatch = styleContent.match(/borderRadius:\s*'?([^',}]+)'?/);
+        
+        if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
+        
+        const x = parseInt(leftMatch[1]);
+        const y = parseInt(topMatch[1]);
+        const width = parseInt(widthMatch[1]);
+        const height = parseInt(heightMatch[1]);
+        const color = colorMatch ? colorMatch[1] : "#f9a8d4";
+        const zIndex = zIndexMatch ? parseInt(zIndexMatch[1]) : 0;
+        
+        let type: ShapeType = "rectangle";
+        if (borderRadiusMatch) {
+          const br = borderRadiusMatch[1].trim();
+          if (br === "50%") {
+            type = width === height ? "circle" : "ellipse";
+          } else if (br !== "0" && br !== "0px") {
+            type = "roundedRectangle";
+          }
+        }
+        
+        const shape: Shape = {
+          id,
+          type,
+          x,
+          y,
+          width,
+          height,
+          color,
+          zIndex,
+        };
+        
+        if (borderRadiusMatch && borderRadiusMatch[1].trim() !== "50%") {
+          const br = borderRadiusMatch[1].trim();
+          if (!br.endsWith("%") && !br.endsWith("px")) {
+            shape.borderRadius = parseInt(br);
+          }
+        }
+        
+        parsedShapes.push(shape);
+      }
+      
+      // Text 파싱
+      const textDivRegex = /<div\s+className="text-(\d+)"\s+style=\{\{([^}]+)\}\}\s*>\s*([^<]+)\s*<\/div>/g;
+      
+      while ((match = textDivRegex.exec(react)) !== null) {
+        const id = parseInt(match[1]);
+        const styleContent = match[2];
+        const text = match[3].trim();
+        
+        const leftMatch = styleContent.match(/left:\s*(\d+)/);
+        const topMatch = styleContent.match(/top:\s*(\d+)/);
+        const widthMatch = styleContent.match(/width:\s*(\d+)/);
+        const heightMatch = styleContent.match(/height:\s*(\d+)/);
+        const fontSizeMatch = styleContent.match(/fontSize:\s*(\d+)/);
+        const colorMatch = styleContent.match(/color:\s*'([^']+)'/);
+        
+        if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
+        
+        parsedTexts.push({
+          id,
+          x: parseInt(leftMatch[1]),
+          y: parseInt(topMatch[1]),
+          width: parseInt(widthMatch[1]),
+          height: parseInt(heightMatch[1]),
+          text,
+          fontSize: fontSizeMatch ? parseInt(fontSizeMatch[1]) : 16,
+          color: colorMatch ? colorMatch[1] : "#000000",
+          fontFamily: "Arial",
+          fontWeight: "normal",
+          fontStyle: "normal",
+          textAlign: "left",
+        });
+      }
+      
+      return { shapes: parsedShapes, texts: parsedTexts };
+    } catch (error) {
+      console.error("React 파싱 오류:", error);
+      return { shapes: [], texts: [] };
+    }
+  };
+
+  // 코드 변경 핸들러
+  const handleCodeChange = (newCode: string) => {
+    setCodeContent(newCode);
+    setIsCodeEditing(true);
+    
+    try {
+      let parsedShapes: Shape[] = [];
+      let parsedTexts: Text[] = [];
+      
+      if (codeView === "xml") {
+        const result = parseXML(newCode);
+        parsedShapes = result.shapes;
+        parsedTexts = result.texts;
+      } else if (codeView === "css") {
+        const result = parseCSS(newCode);
+        parsedShapes = result.shapes;
+        parsedTexts = result.texts;
+      } else if (codeView === "react") {
+        const result = parseReact(newCode);
+        parsedShapes = result.shapes;
+        parsedTexts = result.texts;
+      }
+      
+      if (parsedShapes.length > 0 || parsedTexts.length > 0) {
+        setShapes(parsedShapes);
+        setTexts(parsedTexts);
+      }
+    } catch (error) {
+      console.error("코드 파싱 오류:", error);
+    }
+  };
+
+  // shapes, texts 변경 시 코드 업데이트
+  useEffect(() => {
+    if (!isCodeEditing) {
+      const generatedCode = codeView === "xml" ? String(generateXML) : codeView === "css" ? String(generateCSS) : String(generateReact);
+      setCodeContent(generatedCode);
+    }
+  }, [shapes, texts, codeView, isCodeEditing, generateXML, generateCSS, generateReact]);
+
+  // codeView 변경 시 코드 업데이트
+  useEffect(() => {
+    setIsCodeEditing(false);
+    const generatedCode = codeView === "xml" ? String(generateXML) : codeView === "css" ? String(generateCSS) : String(generateReact);
+    setCodeContent(generatedCode);
+  }, [codeView, generateXML, generateCSS, generateReact]);
+
+  // 초기 코드 설정
+  useEffect(() => {
+    const generatedCode = codeView === "xml" ? String(generateXML) : codeView === "css" ? String(generateCSS) : String(generateReact);
+    setCodeContent(generatedCode);
+  }, []);
 
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
@@ -735,16 +1107,22 @@ function App() {
       if (strokeMenuRef.current && !strokeMenuRef.current.contains(event.target as Node)) {
         setShowStrokeMenu(false);
       }
+      if (bringForwardMenuRef.current && !bringForwardMenuRef.current.contains(event.target as Node)) {
+        setShowBringForwardMenu(false);
+      }
+      if (sendBackwardMenuRef.current && !sendBackwardMenuRef.current.contains(event.target as Node)) {
+        setShowSendBackwardMenu(false);
+      }
     };
 
-    if (showShapeMenu || showShapeColorMenu || showTextColorMenu || showEffectsMenu || showStrokeMenu) {
+    if (showShapeMenu || showShapeColorMenu || showTextColorMenu || showEffectsMenu || showStrokeMenu || showBringForwardMenu || showSendBackwardMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showShapeMenu, showShapeColorMenu, showTextColorMenu, showEffectsMenu, showStrokeMenu]);
+  }, [showShapeMenu, showShapeColorMenu, showTextColorMenu, showEffectsMenu, showStrokeMenu, showBringForwardMenu, showSendBackwardMenu]);
 
   // 드롭다운이 열릴 때 자동으로 color input 클릭
   useEffect(() => {
@@ -962,11 +1340,9 @@ function App() {
       if (width >= 10 && height >= 10) {
         const finalWidth = Math.max(20, width);
         const finalHeight = Math.max(20, height);
-        // 원/타원의 경우 borderRadius를 undefined로 설정 (렌더링 시 50%로 적용됨)
-        // rectangle의 경우 0으로 설정 (나중에 사용자가 조정 가능)
-        const initialBorderRadius = (pendingShapeType === "circle" || pendingShapeType === "ellipse") 
-          ? undefined 
-          : (pendingShapeType === "rectangle" ? 0 : undefined);
+        // roundedRectangle의 경우 기본값 10으로 설정
+        const initialBorderRadius = pendingShapeType === "roundedRectangle" ? 10 : undefined;
+        const maxZIndex = shapes.length > 0 ? Math.max(...shapes.map(s => s.zIndex)) : 0;
         const newShape: Shape = {
           id: Date.now(),
           type: pendingShapeType,
@@ -975,13 +1351,14 @@ function App() {
           width: finalWidth,
           height: finalHeight,
           color: DEFAULT_SHAPE_COLOR,
+          zIndex: maxZIndex + 1,
           borderRadius: initialBorderRadius,
         };
         setShapes([...shapes, newShape]);
         setSelectedShape(newShape);
-        // 원/타원의 경우 borderRadius를 0으로 표시 (실제로는 50%로 렌더링됨)
-        setShapeBorderRadius(0);
-        setBorderRadiusInputValue("0");
+        const borderRadius = newShape.borderRadius ?? (newShape.type === "roundedRectangle" ? 10 : 0);
+        setShapeBorderRadius(borderRadius);
+        setBorderRadiusInputValue(borderRadius.toString());
       }
       
       setIsDrawing(false);
@@ -1064,6 +1441,101 @@ function App() {
     }
   };
 
+  // z-index 조정 함수들
+  const bringToFront = () => {
+    if (!selectedShape) return;
+    setShapes(prevShapes => {
+      const maxZIndex = prevShapes.length > 0 ? Math.max(...prevShapes.map(s => s.zIndex)) : 0;
+      const updatedShape = { ...selectedShape, zIndex: maxZIndex + 1 };
+      const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+      setSelectedShape(updatedShape);
+      return newShapes;
+    });
+  };
+
+  const bringForward = () => {
+    if (!selectedShape) return;
+    setShapes(prevShapes => {
+      // 현재 zIndex보다 큰 zIndex를 가진 도형들 중 가장 작은 값 찾기
+      const higherZIndices = prevShapes
+        .filter(s => s.id !== selectedShape.id && s.zIndex > selectedShape.zIndex)
+        .map(s => s.zIndex);
+      
+      if (higherZIndices.length === 0) {
+        // 더 높은 zIndex가 없으면 최대값 + 1
+        const maxZIndex = prevShapes.length > 0 ? Math.max(...prevShapes.map(s => s.zIndex)) : 0;
+        const updatedShape = { ...selectedShape, zIndex: maxZIndex + 1 };
+        const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+        setSelectedShape(updatedShape);
+        return newShapes;
+      } else {
+        // 가장 작은 더 높은 zIndex로 교환
+        const targetZIndex = Math.min(...higherZIndices);
+        const targetShape = prevShapes.find(s => s.zIndex === targetZIndex);
+        if (targetShape) {
+          const updatedSelected = { ...selectedShape, zIndex: targetZIndex };
+          const updatedTarget = { ...targetShape, zIndex: selectedShape.zIndex };
+          const newShapes = prevShapes.map(s => 
+            s.id === selectedShape.id ? updatedSelected : 
+            s.id === targetShape.id ? updatedTarget : s
+          );
+          setSelectedShape(updatedSelected);
+          return newShapes;
+        }
+      }
+      return prevShapes;
+    });
+  };
+
+  const sendBackward = () => {
+    if (!selectedShape) return;
+    setShapes(prevShapes => {
+      // 현재 zIndex보다 작은 zIndex를 가진 도형들 중 가장 큰 값 찾기 (최소 1)
+      const lowerZIndices = prevShapes
+        .filter(s => s.id !== selectedShape.id && s.zIndex < selectedShape.zIndex && s.zIndex >= 1)
+        .map(s => s.zIndex);
+      
+      if (lowerZIndices.length === 0) {
+        // 더 낮은 zIndex가 없으면 최소값 - 1 (하지만 최소 1)
+        const minZIndex = prevShapes.length > 0 ? Math.min(...prevShapes.map(s => s.zIndex)) : 1;
+        const newZIndex = Math.max(1, minZIndex - 1);
+        const updatedShape = { ...selectedShape, zIndex: newZIndex };
+        const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+        setSelectedShape(updatedShape);
+        return newShapes;
+      } else {
+        // 가장 큰 더 낮은 zIndex로 교환
+        const targetZIndex = Math.max(...lowerZIndices);
+        const targetShape = prevShapes.find(s => s.zIndex === targetZIndex);
+        if (targetShape) {
+          const updatedSelected = { ...selectedShape, zIndex: targetZIndex };
+          const updatedTarget = { ...targetShape, zIndex: selectedShape.zIndex };
+          const newShapes = prevShapes.map(s => 
+            s.id === selectedShape.id ? updatedSelected : 
+            s.id === targetShape.id ? updatedTarget : s
+          );
+          setSelectedShape(updatedSelected);
+          return newShapes;
+        }
+      }
+      return prevShapes;
+    });
+  };
+
+  const sendToBack = () => {
+    if (!selectedShape) return;
+    setShapes(prevShapes => {
+      // 도형은 항상 캔버스 앞에 있어야 하므로 최소값은 1 (캔버스가 0)
+      const minZIndex = prevShapes.length > 0 ? Math.min(...prevShapes.map(s => s.zIndex)) : 1;
+      // 최소값이 1보다 작으면 1로, 그렇지 않으면 최소값 - 1 (하지만 최소 1)
+      const newZIndex = Math.max(1, minZIndex - 1);
+      const updatedShape = { ...selectedShape, zIndex: newZIndex };
+      const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+      setSelectedShape(updatedShape);
+      return newShapes;
+    });
+  };
+
   const handleMouseDown = (e: React.MouseEvent, shape: Shape) => {
     e.stopPropagation();
     // 도형 추가 모드일 때는 도형 클릭 무시
@@ -1106,7 +1578,7 @@ function App() {
     setShapeHeight(shape.height);
     setShapeX(shape.x);
     setShapeY(shape.y);
-    const borderRadius = shape.borderRadius ?? (shape.type === "circle" || shape.type === "ellipse" ? Math.min(shape.width, shape.height) / 2 : 0);
+    const borderRadius = shape.borderRadius ?? (shape.type === "roundedRectangle" ? 10 : 0);
     setShapeBorderRadius(borderRadius);
     setBorderRadiusInputValue(borderRadius.toString());
     setPendingShapeType(null); // 도형 선택 시 추가 모드 해제
@@ -1781,6 +2253,7 @@ function App() {
                             // JPEG로 압축 (품질 0.8)
                             const compressedImageUrl = canvas.toDataURL('image/jpeg', 0.8);
                             
+                            const maxZIndex = shapes.length > 0 ? Math.max(...shapes.map(s => s.zIndex)) : 0;
                             const newShape: Shape = {
                               id: Date.now(),
                               type: "image",
@@ -1789,6 +2262,7 @@ function App() {
                               width: Math.max(50, width),
                               height: Math.max(50, height),
                               color: DEFAULT_SHAPE_COLOR,
+                              zIndex: maxZIndex + 1,
                               imageUrl: compressedImageUrl,
                             };
                             setShapes([...shapes, newShape]);
@@ -2329,18 +2803,18 @@ function App() {
                     <img 
                       src={cornerRadiusIcon} 
                       alt="Corner Radius" 
-                      className={`w-auto h-4 ${selectedShape.type !== "rectangle" ? "opacity-50" : ""}`} 
+                      className={`w-auto h-4 ${selectedShape.type !== "roundedRectangle" ? "opacity-50" : ""}`} 
                     />
-                    <span className={`text-sm ${selectedShape.type !== "rectangle" ? "text-gray-500" : "text-white dark:text-white"}`}>
+                    <span className={`text-sm ${selectedShape.type !== "roundedRectangle" ? "text-gray-500" : "text-white dark:text-white"}`}>
                       Corner Radius:
                     </span>
                     <input
                       ref={borderRadiusInputRef}
                       type="text"
                       value={borderRadiusInputValue}
-                      disabled={selectedShape.type !== "rectangle"}
+                      disabled={selectedShape.type !== "roundedRectangle"}
                       onChange={(e) => {
-                        if (selectedShape.type !== "rectangle") return;
+                        if (selectedShape.type !== "roundedRectangle") return;
                         const input = e.target.value;
                         // 빈 문자열이거나 숫자만 허용
                         if (input === '' || /^\d+$/.test(input)) {
@@ -2365,7 +2839,7 @@ function App() {
                         }
                       }}
                       onBlur={(e) => {
-                        if (selectedShape.type !== "rectangle") return;
+                        if (selectedShape.type !== "roundedRectangle") return;
                         // 포커스를 잃을 때 빈 값이면 현재 borderRadius 값으로 복원
                         const value = e.target.value;
                         if (value === '' || isNaN(Number(value)) || value === '0') {
@@ -2384,7 +2858,7 @@ function App() {
                         }
                       }}
                       className={`w-16 px-2 py-1 bg-black dark:bg-black border rounded text-sm ${
-                        selectedShape.type !== "rectangle" 
+                        selectedShape.type !== "roundedRectangle" 
                           ? "text-gray-500 border-gray-600 cursor-not-allowed opacity-50" 
                           : "text-white border-pink-300/20"
                       }`}
@@ -2396,21 +2870,108 @@ function App() {
                       min="0"
                       max={Math.min(shapeWidth, shapeHeight) / 2}
                       value={shapeBorderRadius}
-                      disabled={selectedShape.type !== "rectangle"}
+                      disabled={selectedShape.type !== "roundedRectangle"}
                       onChange={(e) => {
-                        if (selectedShape.type !== "rectangle") return;
+                        if (selectedShape.type !== "roundedRectangle") return;
                         const newRadius = Number(e.target.value);
                         setShapeBorderRadius(newRadius);
                         setBorderRadiusInputValue(newRadius.toString());
                         updateSelectedShape(undefined, undefined, undefined, undefined, undefined, newRadius);
                       }}
                       className={`flex-1 h-2 bg-gray-700 rounded-lg appearance-none ${
-                        selectedShape.type !== "rectangle" 
+                        selectedShape.type !== "roundedRectangle" 
                           ? "opacity-50 cursor-not-allowed" 
                           : "cursor-pointer accent-pink-300"
                       }`}
                     />
                   </div>
+                </div>
+              </div>
+              {/* 세 번째 줄: z-index 조정 버튼들 */}
+              <div className="flex items-center gap-2">
+                {/* Bring Forward 버튼 */}
+                <div className="relative" ref={bringForwardMenuRef}>
+                  <button 
+                    onClick={() => {
+                      setShowBringForwardMenu(!showBringForwardMenu);
+                    }}
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                    title="Bring Forward"
+                  >
+                    {/* 두 개의 겹쳐진 사각형 아이콘 */}
+                    <div className="relative w-5 h-5">
+                      <div className="absolute top-0 left-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 border border-white"></div>
+                    </div>
+                    <span>Bring Forward</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showBringForwardMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
+                      <button
+                        onClick={() => {
+                          bringForward();
+                          setShowBringForwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                      >
+                        Bring Forward
+                      </button>
+                      <button
+                        onClick={() => {
+                          bringToFront();
+                          setShowBringForwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
+                      >
+                        Bring to Front
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Send Backward 버튼 */}
+                <div className="relative" ref={sendBackwardMenuRef}>
+                  <button 
+                    onClick={() => {
+                      setShowSendBackwardMenu(!showSendBackwardMenu);
+                    }}
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                    title="Send Backward"
+                  >
+                    {/* 두 개의 겹쳐진 사각형 아이콘 */}
+                    <div className="relative w-5 h-5">
+                      <div className="absolute top-0 left-0 w-3 h-3 border border-white"></div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
+                    </div>
+                    <span>Send Backward</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showSendBackwardMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
+                      <button
+                        onClick={() => {
+                          sendBackward();
+                          setShowSendBackwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                      >
+                        Send Backward
+                      </button>
+                      <button
+                        onClick={() => {
+                          sendToBack();
+                          setShowSendBackwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
+                      >
+                        Send to Back
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2461,7 +3022,7 @@ function App() {
                 }}
               />
             )}
-            {shapes.map((shape) => {
+            {[...shapes].sort((a, b) => a.zIndex - b.zIndex).map((shape) => {
               const isSelected = selectedShape?.id === shape.id;
               return (
                 <div
@@ -2475,6 +3036,7 @@ function App() {
                     width: `${shape.width}px`,
                     height: `${shape.height}px`,
                     pointerEvents: "auto",
+                    zIndex: shape.zIndex,
                   }}
                 >
                   {shape.type === "triangle" || isClipPathShape(shape.type) ? (
@@ -2969,21 +3531,53 @@ function App() {
         </div>
 
         {/* 코드 편집 창 */}
-        <div className="flex-1 overflow-auto -mt-px">
-          <SyntaxHighlighter
-            language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
-            style={dracula}
-            customStyle={{
-              margin: 0,
-              padding: "1rem",
-              fontSize: "0.75rem",
-              backgroundColor: "#1B0F0F",
-              height: "100%",
-            }}
-            showLineNumbers={false}
+        <div className="flex-1 overflow-auto -mt-px relative">
+          {/* SyntaxHighlighter 오버레이 (하이라이팅 표시용) */}
+          <div 
+            className="absolute inset-0 pointer-events-none overflow-auto"
+            style={{ zIndex: 1 }}
           >
-            {codeView === "xml" ? generateXML : codeView === "css" ? generateCSS : generateReact}
-          </SyntaxHighlighter>
+            <SyntaxHighlighter
+              language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
+              style={dracula}
+              customStyle={{
+                margin: 0,
+                padding: "1rem",
+                fontSize: "0.75rem",
+                backgroundColor: "transparent",
+                height: "100%",
+              }}
+              showLineNumbers={false}
+              PreTag="div"
+            >
+              {codeContent || (codeView === "xml" ? "<!-- 코드가 여기에 표시됩니다 -->" : codeView === "css" ? "/* 코드가 여기에 표시됩니다 */" : "// 코드가 여기에 표시됩니다")}
+            </SyntaxHighlighter>
+          </div>
+          {/* 편집 가능한 textarea */}
+          <textarea
+            value={codeContent}
+            onChange={(e) => handleCodeChange(e.target.value)}
+            onBlur={() => setIsCodeEditing(false)}
+            onScroll={(e) => {
+              const overlay = e.currentTarget.parentElement?.querySelector('.absolute') as HTMLElement;
+              if (overlay) {
+                overlay.scrollTop = e.currentTarget.scrollTop;
+                overlay.scrollLeft = e.currentTarget.scrollLeft;
+              }
+            }}
+            className="w-full h-full p-4 text-sm font-mono resize-none focus:outline-none relative"
+            style={{
+              backgroundColor: "transparent",
+              color: "transparent",
+              caretColor: "#f8f8f2",
+              fontSize: "0.75rem",
+              lineHeight: "1.5",
+              tabSize: 2,
+              zIndex: 2,
+            }}
+            spellCheck={false}
+            placeholder=""
+          />
         </div>
       </div>
     </div>
