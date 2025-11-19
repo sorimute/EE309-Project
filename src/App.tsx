@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 // @ts-ignore
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 // @ts-ignore
@@ -41,8 +41,78 @@ interface FileItem {
   extension: "xml" | "css" | "react";
 }
 
+interface Text {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  fontSize: number;
+  color: string;
+  fontFamily: string;
+  fontWeight: string;
+  fontStyle: string;
+  textAlign: "left" | "center" | "right";
+}
+
 // 도형의 기본 색상 (프로그램에서 사용하는 핑크색)
 const DEFAULT_SHAPE_COLOR = "#f9a8d4";
+
+// 편집 가능한 텍스트 컴포넌트 (커서 위치 보존을 위해)
+const EditableText = forwardRef<HTMLDivElement, {
+  text: Text;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  onInput: () => void;
+}>(({ text, onBlur, onKeyDown, onInput }, ref) => {
+  const divRef = useRef<HTMLDivElement>(null);
+  
+  useImperativeHandle(ref, () => divRef.current as HTMLDivElement);
+  
+  // 편집 모드로 전환될 때만 내용 설정
+  useEffect(() => {
+    if (divRef.current && divRef.current.textContent !== text.text) {
+      divRef.current.textContent = text.text;
+    }
+  }, []); // 빈 의존성 배열 - 마운트 시에만 실행
+  
+  return (
+    <div
+      ref={divRef}
+      className="text-container"
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      onInput={onInput}
+      style={{
+        position: "absolute",
+        left: `${text.x}px`,
+        top: `${text.y}px`,
+        width: `${text.width}px`,
+        height: `${text.height}px`,
+        fontSize: `${text.fontSize}px`,
+        color: text.color,
+        fontFamily: text.fontFamily,
+        fontWeight: text.fontWeight,
+        fontStyle: text.fontStyle,
+        textAlign: text.textAlign,
+        cursor: "text",
+        userSelect: "text",
+        border: "2px solid #f9a8d4",
+        padding: "2px",
+        borderRadius: "2px",
+        backgroundColor: "rgba(249, 168, 212, 0.1)",
+        outline: "none",
+        whiteSpace: "pre-wrap",
+        wordWrap: "break-word",
+        overflow: "hidden",
+        boxSizing: "border-box",
+      }}
+    />
+  );
+});
 
 function App() {
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -60,6 +130,9 @@ function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, shapeX: 0, shapeY: 0 });
+  const [isResizingText, setIsResizingText] = useState(false);
+  const [textResizeHandle, setTextResizeHandle] = useState<string | null>(null);
+  const [textResizeStart, setTextResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, textX: 0, textY: 0 });
   const [showShapeMenu, setShowShapeMenu] = useState(false);
   const [showShapeColorMenu, setShowShapeColorMenu] = useState(false);
   const [showTextColorMenu, setShowTextColorMenu] = useState(false);
@@ -71,6 +144,13 @@ function App() {
   const [_currentFileName, setCurrentFileName] = useState<string>("React.tsx");
   const [openedFiles, setOpenedFiles] = useState<string[]>(["React.tsx"]); // 열린 파일 목록
   const [activeFile, setActiveFile] = useState<string>("React.tsx"); // 현재 활성화된 파일
+  const [texts, setTexts] = useState<Text[]>([]);
+  const [selectedText, setSelectedText] = useState<Text | null>(null);
+  const [isDraggingText, setIsDraggingText] = useState(false);
+  const [textDragOffset, setTextDragOffset] = useState({ x: 0, y: 0 });
+  const [pendingText, setPendingText] = useState(false);
+  const [editingTextId, setEditingTextId] = useState<number | null>(null);
+  const textInputRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const textColorMenuRef = useRef<HTMLDivElement>(null);
@@ -208,7 +288,7 @@ function App() {
 
   // XML 코드 생성
   const generateXML = () => {
-    if (shapes.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
+    if (shapes.length === 0 && texts.length === 0) return "<!-- 코드가 여기에 표시됩니다 -->";
     
     const xmlParts = shapes.map((shape) => {
       let borderRadiusValue: string;
@@ -228,12 +308,22 @@ function App() {
   </shape>`;
     });
     
-    return `<root>\n${xmlParts.join("\n")}\n</root>`;
+    const textParts = texts.map((text) => {
+      return `  <text id="${text.id}">
+    <position x="${text.x}" y="${text.y}" />
+    <size width="${text.width}" height="${text.height}" />
+    <content>${text.text}</content>
+    <style fontSize="${text.fontSize}" color="${text.color}" fontFamily="${text.fontFamily}" fontWeight="${text.fontWeight}" fontStyle="${text.fontStyle}" textAlign="${text.textAlign}" />
+  </text>`;
+    });
+    
+    const allParts = [...xmlParts, ...textParts];
+    return `<root>\n${allParts.join("\n")}\n</root>`;
   };
 
   // CSS 코드 생성
   const generateCSS = () => {
-    if (shapes.length === 0) return "/* 코드가 여기에 표시됩니다 */";
+    if (shapes.length === 0 && texts.length === 0) return "/* 코드가 여기에 표시됩니다 */";
     
     const getShapeCSS = (shape: Shape) => {
       let css = `.shape-${shape.id} {\n  position: absolute;\n  left: ${shape.x}px;\n  top: ${shape.y}px;\n  width: ${shape.width}px;\n  height: ${shape.height}px;\n  background-color: ${shape.color};`;
@@ -276,14 +366,19 @@ function App() {
       return css;
     };
     
-    const cssParts = shapes.map((shape) => getShapeCSS(shape));
+    const getTextCSS = (text: Text) => {
+      return `.text-${text.id} {\n  position: absolute;\n  left: ${text.x}px;\n  top: ${text.y}px;\n  width: ${text.width}px;\n  height: ${text.height}px;\n  font-size: ${text.fontSize}px;\n  color: ${text.color};\n  font-family: ${text.fontFamily};\n  font-weight: ${text.fontWeight};\n  font-style: ${text.fontStyle};\n  text-align: ${text.textAlign};\n}`;
+    };
     
-    return cssParts.join("\n\n");
+    const shapeParts = shapes.map((shape) => getShapeCSS(shape));
+    const textParts = texts.map((text) => getTextCSS(text));
+    
+    return [...shapeParts, ...textParts].join("\n\n");
   };
 
   // React 코드 생성
   const generateReact = () => {
-    if (shapes.length === 0) return "// 코드가 여기에 표시됩니다";
+    if (shapes.length === 0 && texts.length === 0) return "// 코드가 여기에 표시됩니다";
     
     const getShapeReact = (shape: Shape) => {
       if (shape.type === "triangle") {
@@ -326,7 +421,14 @@ function App() {
       return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
     };
     
-    const reactParts = shapes.map((shape) => getShapeReact(shape));
+    const getTextReact = (text: Text) => {
+      const escapedText = text.text.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+      return `  <div\n    className="text-${text.id}"\n    style={{\n      position: 'absolute',\n      left: ${text.x},\n      top: ${text.y},\n      width: ${text.width},\n      height: ${text.height},\n      fontSize: ${text.fontSize},\n      color: '${text.color}',\n      fontFamily: '${text.fontFamily}',\n      fontWeight: '${text.fontWeight}',\n      fontStyle: '${text.fontStyle}',\n      textAlign: '${text.textAlign}',\n    }}\n  >\n    ${escapedText}\n  </div>`;
+    };
+    
+    const shapeParts = shapes.map((shape) => getShapeReact(shape));
+    const textParts = texts.map((text) => getTextReact(text));
+    const reactParts = [...shapeParts, ...textParts];
     
     return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
   };
@@ -399,12 +501,30 @@ function App() {
     }
   }, [activeFile, files]);
 
+  // 편집 모드로 전환될 때 자동으로 포커스 및 텍스트 선택
+  useEffect(() => {
+    if (editingTextId && textInputRef.current) {
+      textInputRef.current.focus();
+      // 텍스트 전체 선택
+      const range = document.createRange();
+      range.selectNodeContents(textInputRef.current);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+  }, [editingTextId]);
   // Delete 키로 도형 삭제, 화살표 키로 도형 이동
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // input 필드에 포커스가 있으면 도형 삭제/이동을 하지 않음
+      // input 필드나 contentEditable 요소에 포커스가 있으면 도형/텍스트 삭제/이동을 하지 않음
       const activeElement = document.activeElement;
-      if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA")) {
+      const isInputFocused = activeElement && (
+        activeElement.tagName === "INPUT" || 
+        activeElement.tagName === "TEXTAREA" ||
+        activeElement.getAttribute("contenteditable") === "true"
+      );
+      
+      if (isInputFocused) {
         return;
       }
       
@@ -441,6 +561,14 @@ function App() {
           setShapeY(newY);
         }
       }
+      
+      // 텍스트 삭제 (편집 모드가 아닐 때만)
+      if (selectedText && !pendingText && !editingTextId && canvasRef.current) {
+        if (event.key === "Delete" || event.key === "Backspace") {
+          setTexts((prevTexts) => prevTexts.filter((text) => text.id !== selectedText.id));
+          setSelectedText(null);
+        }
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -448,7 +576,36 @@ function App() {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedShape, pendingShapeType, isDrawing]);
+  }, [selectedShape, selectedText, pendingShapeType, pendingText, isDrawing, editingTextId]);
+
+  // 텍스트 추가 핸들러
+  const handleAddText = () => {
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      const newText: Text = {
+        id: Date.now(),
+        x: centerX - 100,
+        y: centerY,
+        width: 200,
+        height: 50,
+        text: "텍스트를 입력하세요",
+        fontSize: 16,
+        color: textColor,
+        fontFamily: "Nanum Gothic",
+        fontWeight: "normal",
+        fontStyle: "normal",
+        textAlign: "left",
+      };
+      
+      setTexts([...texts, newText]);
+      setSelectedText(newText);
+      setSelectedShape(null);
+      setPendingText(false);
+    }
+  };
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     // 메뉴가 열려있으면 닫기
@@ -465,13 +622,14 @@ function App() {
     // 도형이나 리사이즈 핸들을 클릭한 경우 무시
     // (handleMouseDown에서 stopPropagation이 호출되므로 여기까지 오지 않음)
     const target = e.target as HTMLElement;
-    if (target.closest(".resize-handle") || target.closest(".shape-container")) {
+    if (target.closest(".resize-handle") || target.closest(".text-resize-handle") || target.closest(".shape-container") || target.closest(".text-container")) {
       return;
     }
     
     // 도형 추가 모드가 아닐 때 바탕을 클릭하면 선택 해제
-    if (!pendingShapeType) {
+    if (!pendingShapeType && !pendingText) {
       setSelectedShape(null);
+      setSelectedText(null);
     }
     
     // 도형 추가 모드일 때 드래그 시작
@@ -638,7 +796,270 @@ function App() {
     }
   };
 
+  const handleTextMouseDown = (e: React.MouseEvent, text: Text) => {
+    e.stopPropagation();
+    
+    // 편집 모드가 아닐 때만 드래그 처리
+    if (editingTextId === text.id) {
+      return;
+    }
+    
+    const target = e.target as HTMLElement;
+    
+    // 리사이즈 핸들 클릭인지 확인
+    if (target.classList.contains("text-resize-handle")) {
+      const handle = target.getAttribute("data-handle");
+      if (handle && canvasRef.current) {
+        setIsResizingText(true);
+        setTextResizeHandle(handle);
+        setTextResizeStart({
+          x: e.clientX,
+          y: e.clientY,
+          width: text.width,
+          height: text.height,
+          textX: text.x,
+          textY: text.y,
+        });
+        setSelectedText(text);
+        setIsDraggingText(false);
+      }
+      return;
+    }
+    
+    setSelectedText(text);
+    setSelectedShape(null);
+    setPendingShapeType(null);
+    setPendingText(false);
+    
+    // 더블클릭이면 편집 모드로 전환하지 않고 드래그 시작
+    if (e.detail === 1) {
+      // 단일 클릭: 드래그 준비
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left - text.x;
+        const offsetY = e.clientY - rect.top - text.y;
+        setTextDragOffset({ x: offsetX, y: offsetY });
+        setIsDraggingText(true);
+      }
+    }
+  };
+
+  const handleTextDoubleClick = (e: React.MouseEvent, text: Text) => {
+    e.stopPropagation();
+    setEditingTextId(text.id);
+    setSelectedText(text);
+    setIsDraggingText(false);
+  };
+
+  const handleTextBlur = (textId: number) => {
+    if (textInputRef.current) {
+      const newText = textInputRef.current.innerText || textInputRef.current.textContent || "";
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === textId ? { ...t, text: newText } : t
+        )
+      );
+    }
+    setEditingTextId(null);
+  };
+
+  const handleTextInput = (textId: number) => {
+    // 실시간으로 state 업데이트 (코드 반영을 위해)
+    // 하지만 contentEditable의 내용은 직접 조작하지 않으므로 커서 위치는 유지됨
+    if (textInputRef.current) {
+      const newText = textInputRef.current.innerText || textInputRef.current.textContent || "";
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === textId ? { ...t, text: newText } : t
+        )
+      );
+    }
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent, textId: number) => {
+    // Backspace와 Delete는 기본 동작을 허용 (커서 이동 방해하지 않음)
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleTextBlur(textId);
+    } else if (e.key === "Escape") {
+      setEditingTextId(null);
+    }
+    // Backspace와 Delete는 기본 동작을 그대로 사용
+  };
+
+  // Bold 토글 핸들러
+  const handleBoldToggle = () => {
+    if (selectedText) {
+      const newFontWeight = selectedText.fontWeight === "bold" ? "normal" : "bold";
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, fontWeight: newFontWeight } : t
+        )
+      );
+      setSelectedText({ ...selectedText, fontWeight: newFontWeight });
+    }
+  };
+
+  // Italic 토글 핸들러
+  const handleItalicToggle = () => {
+    if (selectedText) {
+      const newFontStyle = selectedText.fontStyle === "italic" ? "normal" : "italic";
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, fontStyle: newFontStyle } : t
+        )
+      );
+      setSelectedText({ ...selectedText, fontStyle: newFontStyle });
+    }
+  };
+
+  // 폰트 크기 감소 핸들러
+  const handleFontSizeDecrease = () => {
+    if (selectedText) {
+      const newFontSize = Math.max(8, selectedText.fontSize - 1);
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, fontSize: newFontSize } : t
+        )
+      );
+      setSelectedText({ ...selectedText, fontSize: newFontSize });
+    }
+  };
+
+  // 폰트 크기 증가 핸들러
+  const handleFontSizeIncrease = () => {
+    if (selectedText) {
+      const newFontSize = Math.min(200, selectedText.fontSize + 1);
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, fontSize: newFontSize } : t
+        )
+      );
+      setSelectedText({ ...selectedText, fontSize: newFontSize });
+    }
+  };
+
+  // 텍스트 정렬 핸들러
+  const handleTextAlignLeft = () => {
+    if (selectedText) {
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, textAlign: "left" } : t
+        )
+      );
+      setSelectedText({ ...selectedText, textAlign: "left" });
+    }
+  };
+
+  const handleTextAlignCenter = () => {
+    if (selectedText) {
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, textAlign: "center" } : t
+        )
+      );
+      setSelectedText({ ...selectedText, textAlign: "center" });
+    }
+  };
+
+  const handleTextAlignRight = () => {
+    if (selectedText) {
+      setTexts((prevTexts) =>
+        prevTexts.map((t) =>
+          t.id === selectedText.id ? { ...t, textAlign: "right" } : t
+        )
+      );
+      setSelectedText({ ...selectedText, textAlign: "right" });
+    }
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
+    // 텍스트 리사이즈 처리
+    if (isResizingText && selectedText && textResizeHandle && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const deltaX = e.clientX - textResizeStart.x;
+      const deltaY = e.clientY - textResizeStart.y;
+      
+      let newWidth = textResizeStart.width;
+      let newHeight = textResizeStart.height;
+      let newX = selectedText.x;
+      let newY = selectedText.y;
+
+      // 리사이즈 핸들에 따라 크기 조절
+      if (textResizeHandle === "nw") {
+        newWidth = Math.max(50, textResizeStart.width - deltaX);
+        newHeight = Math.max(30, textResizeStart.height - deltaY);
+        newX = textResizeStart.textX + (textResizeStart.width - newWidth);
+        newY = textResizeStart.textY + (textResizeStart.height - newHeight);
+      } else if (textResizeHandle === "ne") {
+        newWidth = Math.max(50, textResizeStart.width + deltaX);
+        newHeight = Math.max(30, textResizeStart.height - deltaY);
+        newX = textResizeStart.textX;
+        newY = textResizeStart.textY + (textResizeStart.height - newHeight);
+      } else if (textResizeHandle === "sw") {
+        newWidth = Math.max(50, textResizeStart.width - deltaX);
+        newHeight = Math.max(30, textResizeStart.height + deltaY);
+        newX = textResizeStart.textX + (textResizeStart.width - newWidth);
+        newY = textResizeStart.textY;
+      } else if (textResizeHandle === "se") {
+        newWidth = Math.max(50, textResizeStart.width + deltaX);
+        newHeight = Math.max(30, textResizeStart.height + deltaY);
+        newX = textResizeStart.textX;
+        newY = textResizeStart.textY;
+      } else if (textResizeHandle === "e") {
+        newWidth = Math.max(50, textResizeStart.width + deltaX);
+        newX = textResizeStart.textX;
+        newY = textResizeStart.textY;
+      } else if (textResizeHandle === "w") {
+        newWidth = Math.max(50, textResizeStart.width - deltaX);
+        newX = textResizeStart.textX + (textResizeStart.width - newWidth);
+        newY = textResizeStart.textY;
+      } else if (textResizeHandle === "s") {
+        newHeight = Math.max(30, textResizeStart.height + deltaY);
+        newX = textResizeStart.textX;
+        newY = textResizeStart.textY;
+      } else if (textResizeHandle === "n") {
+        newHeight = Math.max(30, textResizeStart.height - deltaY);
+        newX = textResizeStart.textX;
+        newY = textResizeStart.textY + (textResizeStart.height - newHeight);
+      }
+
+      // 캔버스 경계 체크
+      const maxX = rect.width - newX;
+      const maxY = rect.height - newY;
+      newWidth = Math.min(newWidth, maxX);
+      newHeight = Math.min(newHeight, maxY);
+
+      const updatedText = {
+        ...selectedText,
+        width: newWidth,
+        height: newHeight,
+        x: newX,
+        y: newY,
+      };
+
+      setTexts(texts.map((t) => (t.id === selectedText.id ? updatedText : t)));
+      setSelectedText(updatedText);
+      return;
+    }
+    
+    // 편집 모드가 아닐 때만 텍스트 드래그 처리
+    if (isDraggingText && selectedText && canvasRef.current && editingTextId !== selectedText.id) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const newX = e.clientX - rect.left - textDragOffset.x;
+      const newY = e.clientY - rect.top - textDragOffset.y;
+      
+      const updatedText = {
+        ...selectedText,
+        x: Math.max(0, newX),
+        y: Math.max(0, newY),
+      };
+      
+      setTexts(texts.map((t) => (t.id === selectedText.id ? updatedText : t)));
+      setSelectedText(updatedText);
+      return;
+    }
+    
     // 도형 그리기 중일 때
     if (isDrawing && pendingShapeType && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
@@ -766,8 +1187,11 @@ function App() {
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setIsDraggingText(false);
     setIsResizing(false);
+    setIsResizingText(false);
     setResizeHandle(null);
+    setTextResizeHandle(null);
   };
 
   return (
@@ -832,7 +1256,14 @@ function App() {
           {/* 아이콘 버튼 그룹 */}
           <div className="flex items-center gap-0.5">
             {/* 텍스트 추가 버튼 */}
-            <button className="p-3 bg-black dark:bg-black rounded flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+            <button 
+              onClick={handleAddText}
+              className={`p-3 rounded flex items-center justify-center ${
+                pendingText
+                  ? "bg-gray-800 dark:bg-gray-800 text-white"
+                  : "bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+              } transition-colors cursor-pointer`}
+            >
               <img src={newtextIcon} alt="New Text" className="w-14 h-auto" />
             </button>
 
@@ -1003,18 +1434,44 @@ function App() {
                 <option className="bg-black text-white">Nanum Gothic</option>
               </select>
               <div className="flex items-center gap-1">
-                <button className="px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center">
+                <button 
+                  onClick={handleFontSizeDecrease}
+                  disabled={!selectedText}
+                  className={`px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center ${
+                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                   </svg>
                 </button>
                 <input 
                   type="number" 
-                  value={16} 
-                  className="w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]" 
+                  value={selectedText?.fontSize || 16} 
+                  disabled={!selectedText}
+                  onChange={(e) => {
+                    if (selectedText) {
+                      const newFontSize = Math.max(8, Math.min(200, parseInt(e.target.value) || 16));
+                      setTexts((prevTexts) =>
+                        prevTexts.map((t) =>
+                          t.id === selectedText.id ? { ...t, fontSize: newFontSize } : t
+                        )
+                      );
+                      setSelectedText({ ...selectedText, fontSize: newFontSize });
+                    }
+                  }}
+                  className={`w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${
+                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
                   onWheel={(e) => e.currentTarget.blur()}
                 />
-                <button className="px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center">
+                <button 
+                  onClick={handleFontSizeIncrease}
+                  disabled={!selectedText}
+                  className={`px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center ${
+                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
@@ -1027,7 +1484,10 @@ function App() {
               <div className="relative" ref={textColorMenuRef}>
                 <button 
                   onClick={() => setShowTextColorMenu(!showTextColorMenu)}
-                  className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                  disabled={!selectedText}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
                 >
                   <img src={textColorIcon} alt="Text Color" className="w-auto h-4" />
                   <span>Text Color</span>
@@ -1036,28 +1496,97 @@ function App() {
                   </svg>
                 </button>
                 {showTextColorMenu && (
-                  <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3">
-                    <input
-                      id="text-color-input-in-dropdown"
-                      type="color"
-                      value={textColor}
-                      onChange={(e) => {
-                        setTextColor(e.target.value);
-                      }}
-                      className="h-32 w-full cursor-pointer"
-                    />
+                  <div 
+                    className="absolute bottom-full left-0 mb-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {selectedText ? (
+                      <input
+                        id="text-color-input-in-dropdown"
+                        type="color"
+                        value={selectedText.color}
+                        onChange={(e) => {
+                          const newColor = e.target.value;
+                          setTextColor(newColor);
+                          // 선택된 텍스트가 있으면 해당 텍스트의 색상도 변경
+                          setTexts((prevTexts) =>
+                            prevTexts.map((t) =>
+                              t.id === selectedText.id ? { ...t, color: newColor } : t
+                            )
+                          );
+                          setSelectedText({ ...selectedText, color: newColor });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-32 w-full cursor-pointer"
+                        style={{ 
+                          border: 'none',
+                          outline: 'none',
+                          appearance: 'none',
+                          WebkitAppearance: 'none',
+                          MozAppearance: 'none',
+                          background: 'transparent'
+                        }}
+                      />
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-8">
+                        텍스트를 선택해주세요
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
-              <button className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 font-bold border border-pink-300/20">B</button>
+              <button 
+                onClick={handleBoldToggle}
+                disabled={!selectedText}
+                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 ${
+                  selectedText?.fontWeight === "bold" ? "bg-gray-800" : ""
+                } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                style={{ fontWeight: "bold" }}
+              >
+                B
+              </button>
+              <button 
+                onClick={handleItalicToggle}
+                disabled={!selectedText}
+                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 ${
+                  selectedText?.fontStyle === "italic" ? "bg-gray-800" : ""
+                } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                style={{ fontStyle: "italic" }}
+              >
+                I
+              </button>
               <div className="flex gap-1">
-                <button className="px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20">
+                <button
+                  onClick={handleTextAlignLeft}
+                  disabled={!selectedText}
+                  className={`px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border ${
+                    selectedText?.textAlign === "left"
+                      ? "border-pink-300 bg-pink-300/20"
+                      : "border-pink-300/20"
+                  } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
                   <img src={alignLeftIcon} alt="Align Left" className="w-4 h-4" />
                 </button>
-                <button className="px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20">
+                <button
+                  onClick={handleTextAlignCenter}
+                  disabled={!selectedText}
+                  className={`px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border ${
+                    selectedText?.textAlign === "center"
+                      ? "border-pink-300 bg-pink-300/20"
+                      : "border-pink-300/20"
+                  } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
                   <img src={alignCenterIcon} alt="Align Center" className="w-4 h-4" />
                 </button>
-                <button className="px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20">
+                <button
+                  onClick={handleTextAlignRight}
+                  disabled={!selectedText}
+                  className={`px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border ${
+                    selectedText?.textAlign === "right"
+                      ? "border-pink-300 bg-pink-300/20"
+                      : "border-pink-300/20"
+                  } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
                   <img src={alignRightIcon} alt="Align Right" className="w-4 h-4" />
                 </button>
               </div>
@@ -1410,6 +1939,180 @@ function App() {
                       />
                       <div
                         className="resize-handle"
+                        data-handle="e"
+                        style={{
+                          position: "absolute",
+                          right: "-4px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "ew-resize",
+                        }}
+                      />
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {/* 텍스트 렌더링 */}
+            {texts.map((text) => {
+              const isSelected = selectedText?.id === text.id;
+              const isEditing = editingTextId === text.id;
+              
+              if (isEditing) {
+                return (
+                  <EditableText
+                    key={text.id}
+                    ref={textInputRef}
+                    text={text}
+                    onBlur={() => handleTextBlur(text.id)}
+                    onKeyDown={(e) => handleTextKeyDown(e, text.id)}
+                    onInput={() => handleTextInput(text.id)}
+                  />
+                );
+              }
+              
+              return (
+                <div
+                  key={text.id}
+                  className="text-container"
+                  onMouseDown={(e) => handleTextMouseDown(e, text)}
+                  onDoubleClick={(e) => handleTextDoubleClick(e, text)}
+                  style={{
+                    position: "absolute",
+                    left: `${text.x}px`,
+                    top: `${text.y}px`,
+                    width: `${text.width}px`,
+                    height: `${text.height}px`,
+                    fontSize: `${text.fontSize}px`,
+                    color: text.color,
+                    fontFamily: text.fontFamily,
+                    fontWeight: text.fontWeight,
+                    fontStyle: text.fontStyle,
+                    textAlign: text.textAlign,
+                    cursor: isDraggingText && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                    userSelect: "none",
+                    border: isSelected ? "2px dashed #f9a8d4" : "none",
+                    padding: isSelected ? "2px" : "0",
+                    borderRadius: "2px",
+                    backgroundColor: isSelected ? "rgba(249, 168, 212, 0.1)" : "transparent",
+                    whiteSpace: "pre-wrap",
+                    wordWrap: "break-word",
+                    overflow: "hidden",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {text.text}
+                  {isSelected && (
+                    <>
+                      {/* 모서리 핸들 */}
+                      <div
+                        className="text-resize-handle"
+                        data-handle="nw"
+                        style={{
+                          position: "absolute",
+                          top: "-4px",
+                          left: "-4px",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "nwse-resize",
+                        }}
+                      />
+                      <div
+                        className="text-resize-handle"
+                        data-handle="ne"
+                        style={{
+                          position: "absolute",
+                          top: "-4px",
+                          right: "-4px",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "nesw-resize",
+                        }}
+                      />
+                      <div
+                        className="text-resize-handle"
+                        data-handle="sw"
+                        style={{
+                          position: "absolute",
+                          bottom: "-4px",
+                          left: "-4px",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "nesw-resize",
+                        }}
+                      />
+                      <div
+                        className="text-resize-handle"
+                        data-handle="se"
+                        style={{
+                          position: "absolute",
+                          bottom: "-4px",
+                          right: "-4px",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "nwse-resize",
+                        }}
+                      />
+                      {/* 중간 핸들 */}
+                      <div
+                        className="text-resize-handle"
+                        data-handle="n"
+                        style={{
+                          position: "absolute",
+                          top: "-4px",
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "ns-resize",
+                        }}
+                      />
+                      <div
+                        className="text-resize-handle"
+                        data-handle="s"
+                        style={{
+                          position: "absolute",
+                          bottom: "-4px",
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "ns-resize",
+                        }}
+                      />
+                      <div
+                        className="text-resize-handle"
+                        data-handle="w"
+                        style={{
+                          position: "absolute",
+                          left: "-4px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          width: "8px",
+                          height: "8px",
+                          backgroundColor: "#f9a8d4",
+                          border: "1px solid #000000",
+                          cursor: "ew-resize",
+                        }}
+                      />
+                      <div
+                        className="text-resize-handle"
                         data-handle="e"
                         style={{
                           position: "absolute",
