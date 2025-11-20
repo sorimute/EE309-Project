@@ -75,7 +75,7 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
       const fontStyle = match[11] as "normal" | "italic";
       const textAlign = match[12] as "left" | "center" | "right";
       
-      parsedTexts.push({
+      const parsedText: Text = {
         id,
         x,
         y,
@@ -88,7 +88,9 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
         fontWeight,
         fontStyle,
         textAlign,
-      });
+      };
+      
+      parsedTexts.push(parsedText);
     }
     
     return { shapes: parsedShapes, texts: parsedTexts };

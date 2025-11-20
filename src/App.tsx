@@ -186,7 +186,7 @@ function App() {
       setCodeContent(generatedCode);
     }
   }, [shapes, texts, codeView, isCodeEditing, xmlCode, cssCode, reactCode]);
-
+      
   // codeView 변경 시 코드 업데이트
   useEffect(() => {
     setIsCodeEditing(false);
@@ -410,10 +410,14 @@ function App() {
       setShowStrokeMenu(false);
     }
     
-    // 도형이나 리사이즈 핸들을 클릭한 경우 무시
-    // (handleMouseDown에서 stopPropagation이 호출되므로 여기까지 오지 않음)
+    // 도형 추가 모드가 아닐 때만 도형 클릭 무시
+    // 도형 추가 모드일 때는 도형 위에서도 드래그로 새 도형 생성 가능
     const target = e.target as HTMLElement;
-    if (target.closest(".resize-handle") || target.closest(".text-resize-handle") || target.closest(".shape-container") || target.closest(".text-container")) {
+    if (!pendingShapeType && (target.closest(".resize-handle") || target.closest(".text-resize-handle") || target.closest(".shape-container") || target.closest(".text-container"))) {
+      return;
+    }
+    // 리사이즈 핸들은 항상 무시 (도형 생성 모드가 아니어도)
+    if (target.closest(".resize-handle") || target.closest(".text-resize-handle")) {
       return;
     }
     
@@ -498,9 +502,13 @@ function App() {
     glowColor?: string,
     glowBlur?: number,
     strokeColor?: string,
-    strokeWidth?: number
+    strokeWidth?: number,
   ) => {
     if (selectedShape) {
+      // 잠금된 도형은 속성 변경 불가능
+      if (selectedShape.locked) {
+        return;
+      }
       // 선택된 도형의 현재 값을 기본값으로 사용 (state가 아닌 실제 도형 데이터 사용)
       const newColor = color ?? selectedShape.color;
       const newWidth = width ?? selectedShape.width;
@@ -648,11 +656,18 @@ function App() {
   };
 
   const handleMouseDown = (e: React.MouseEvent, shape: Shape) => {
-    e.stopPropagation();
-    // 도형 추가 모드일 때는 도형 클릭 무시
+    // 도형 추가 모드일 때는 이벤트를 캔버스까지 전파하여 도형 생성 가능하도록 함
     if (pendingShapeType) {
+      return; // stopPropagation을 호출하지 않아 이벤트가 캔버스까지 전파됨
+    }
+    e.stopPropagation();
+    
+    // 잠금된 도형은 드래그/리사이즈 불가능
+    if (shape.locked) {
+      setSelectedShape(shape);
       return;
     }
+    
     const target = e.target as HTMLElement;
     
     // 리사이즈 핸들 클릭인지 확인
@@ -708,6 +723,12 @@ function App() {
     
     // 편집 모드가 아닐 때만 드래그 처리
     if (editingTextId === text.id) {
+      return;
+    }
+    
+    // 잠금된 텍스트는 드래그/리사이즈 불가능
+    if (text.locked) {
+      setSelectedText(text);
       return;
     }
     
@@ -796,7 +817,7 @@ function App() {
 
   // Bold 토글 핸들러
   const handleBoldToggle = () => {
-    if (selectedText) {
+    if (selectedText && !selectedText.locked) {
       const newFontWeight = selectedText.fontWeight === "bold" ? "normal" : "bold";
       setTexts((prevTexts) =>
         prevTexts.map((t) =>
@@ -809,7 +830,7 @@ function App() {
 
   // Italic 토글 핸들러
   const handleItalicToggle = () => {
-    if (selectedText) {
+    if (selectedText && !selectedText.locked) {
       const newFontStyle = selectedText.fontStyle === "italic" ? "normal" : "italic";
       setTexts((prevTexts) =>
         prevTexts.map((t) =>
@@ -848,7 +869,7 @@ function App() {
 
   // 텍스트 정렬 핸들러
   const handleTextAlignLeft = () => {
-    if (selectedText) {
+    if (selectedText && !selectedText.locked) {
       setTexts((prevTexts) =>
         prevTexts.map((t) =>
           t.id === selectedText.id ? { ...t, textAlign: "left" } : t
@@ -859,7 +880,7 @@ function App() {
   };
 
   const handleTextAlignCenter = () => {
-    if (selectedText) {
+    if (selectedText && !selectedText.locked) {
       setTexts((prevTexts) =>
         prevTexts.map((t) =>
           t.id === selectedText.id ? { ...t, textAlign: "center" } : t
@@ -870,7 +891,7 @@ function App() {
   };
 
   const handleTextAlignRight = () => {
-    if (selectedText) {
+    if (selectedText && !selectedText.locked) {
       setTexts((prevTexts) =>
         prevTexts.map((t) =>
           t.id === selectedText.id ? { ...t, textAlign: "right" } : t
@@ -883,6 +904,11 @@ function App() {
   const handleMouseMove = (e: React.MouseEvent) => {
     // 텍스트 리사이즈 처리
     if (isResizingText && selectedText && textResizeHandle && canvasRef.current) {
+      // 잠금된 텍스트는 리사이즈 불가능
+      if (selectedText.locked) {
+        return;
+      }
+      
       const rect = canvasRef.current.getBoundingClientRect();
       const deltaX = e.clientX - textResizeStart.x;
       const deltaY = e.clientY - textResizeStart.y;
@@ -952,6 +978,11 @@ function App() {
     
     // 편집 모드가 아닐 때만 텍스트 드래그 처리
     if (isDraggingText && selectedText && canvasRef.current && editingTextId !== selectedText.id) {
+      // 잠금된 텍스트는 드래그 불가능
+      if (selectedText.locked) {
+        return;
+      }
+      
       const rect = canvasRef.current.getBoundingClientRect();
       const newX = e.clientX - rect.left - textDragOffset.x;
       const newY = e.clientY - rect.top - textDragOffset.y;
@@ -983,17 +1014,21 @@ function App() {
     }
     
     if (isResizing && selectedShape && resizeHandle && canvasRef.current) {
+      // 잠금된 도형은 리사이즈 불가능
+      if (selectedShape.locked) {
+        return;
+      }
+      
       const rect = canvasRef.current.getBoundingClientRect();
       const deltaX = e.clientX - resizeStart.x;
       const deltaY = e.clientY - resizeStart.y;
       
       let newWidth = resizeStart.width;
       let newHeight = resizeStart.height;
-      let newX = selectedShape.x;
-      let newY = selectedShape.y;
+      let newX = resizeStart.shapeX;
+      let newY = resizeStart.shapeY;
 
       // 리사이즈 핸들에 따라 크기 조절
-      // 모서리 핸들 처리 (먼저 처리)
       if (resizeHandle === "nw") {
         newWidth = Math.max(20, resizeStart.width - deltaX);
         newHeight = Math.max(20, resizeStart.height - deltaY);
@@ -1014,28 +1049,22 @@ function App() {
         newHeight = Math.max(20, resizeStart.height + deltaY);
         newX = resizeStart.shapeX;
         newY = resizeStart.shapeY;
-      } else {
-        // 중간 핸들 처리
-        // 오른쪽/왼쪽 핸들
-        if (resizeHandle === "e") {
+      } else if (resizeHandle === "e") {
           newWidth = Math.max(20, resizeStart.width + deltaX);
-          newX = resizeStart.shapeX; // X 위치 유지
-          newY = resizeStart.shapeY; // Y 위치 유지
+        newX = resizeStart.shapeX;
+        newY = resizeStart.shapeY;
         } else if (resizeHandle === "w") {
           newWidth = Math.max(20, resizeStart.width - deltaX);
           newX = resizeStart.shapeX + (resizeStart.width - newWidth);
-          newY = resizeStart.shapeY; // Y 위치 유지
-        }
-        // 아래/위 핸들
-        if (resizeHandle === "s") {
+        newY = resizeStart.shapeY;
+      } else if (resizeHandle === "s") {
           newHeight = Math.max(20, resizeStart.height + deltaY);
-          newX = resizeStart.shapeX; // X 위치 유지
-          newY = resizeStart.shapeY; // Y 위치 유지
+        newX = resizeStart.shapeX;
+        newY = resizeStart.shapeY;
         } else if (resizeHandle === "n") {
           newHeight = Math.max(20, resizeStart.height - deltaY);
-          newX = resizeStart.shapeX; // X 위치 유지
+        newX = resizeStart.shapeX;
           newY = resizeStart.shapeY + (resizeStart.height - newHeight);
-        }
       }
 
       // 캔버스 경계 체크
@@ -1064,6 +1093,11 @@ function App() {
       );
       setSelectedShape(updatedShape);
     } else if (isDragging && selectedShape && canvasRef.current) {
+      // 잠금된 도형은 드래그 불가능
+      if (selectedShape.locked) {
+        return;
+      }
+      
       const rect = canvasRef.current.getBoundingClientRect();
       const newX = e.clientX - rect.left - dragOffset.x;
       const newY = e.clientY - rect.top - dragOffset.y;
@@ -1393,8 +1427,8 @@ function App() {
                 onClick={() => imageInputRef.current?.click()}
                 className="p-3 bg-black dark:bg-black rounded flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 transition-colors cursor-pointer"
               >
-                <img src={newimageIcon} alt="New Image" className="w-14 h-auto" />
-              </button>
+              <img src={newimageIcon} alt="New Image" className="w-14 h-auto" />
+            </button>
             </div>
           </div>
 
@@ -1402,7 +1436,7 @@ function App() {
           <div className="h-20 w-px bg-pink-300/30 dark:bg-pink-300/30"></div>
 
           {/* 텍스트 편집 칸 (두 줄로 배치) */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 min-w-[200px]">
             {/* 첫 번째 줄: Font, Size */}
             <div className="flex items-center gap-2">
               <select className="px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm">
@@ -1411,9 +1445,9 @@ function App() {
               <div className="flex items-center gap-1">
                 <button 
                   onClick={handleFontSizeDecrease}
-                  disabled={!selectedText}
-                  className={`px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center ${
-                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  disabled={!selectedText || selectedText?.locked}
+                  className={`px-2 py-1 bg-black dark:bg-black border border-pink-300/20 rounded text-sm flex items-center justify-center ${
+                    !selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1423,9 +1457,9 @@ function App() {
                 <input 
                   type="number" 
                   value={selectedText?.fontSize || 16} 
-                  disabled={!selectedText}
+                  disabled={!selectedText || selectedText?.locked}
                   onChange={(e) => {
-                    if (selectedText) {
+                    if (selectedText && !selectedText.locked) {
                       const newFontSize = Math.max(8, Math.min(200, parseInt(e.target.value) || 16));
                       setTexts((prevTexts) =>
                         prevTexts.map((t) =>
@@ -1435,16 +1469,16 @@ function App() {
                       setSelectedText({ ...selectedText, fontSize: newFontSize });
                     }
                   }}
-                  className={`w-16 px-2 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${
-                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  className={`w-9 px-1 py-1 bg-black dark:bg-black text-white border border-pink-300/20 rounded text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${
+                    !selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed" : ""
                   }`}
                   onWheel={(e) => e.currentTarget.blur()}
                 />
                 <button 
                   onClick={handleFontSizeIncrease}
-                  disabled={!selectedText}
-                  className={`px-2 py-1 bg-black dark:bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 rounded text-sm flex items-center justify-center ${
-                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  disabled={!selectedText || selectedText?.locked}
+                  className={`px-2 py-1 bg-black dark:bg-black border border-pink-300/20 rounded text-sm flex items-center justify-center ${
+                    !selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1453,15 +1487,15 @@ function App() {
                 </button>
               </div>
             </div>
-            {/* 두 번째 줄: 색상, Bold, 정렬 */}
+            {/* 두 번째 줄: Text Color, B, I */}
             <div className="flex items-center gap-2">
               {/* Text Color 버튼 (아이콘 + 텍스트 + 드롭다운) */}
               <div className="relative" ref={textColorMenuRef}>
                 <button 
                   onClick={() => setShowTextColorMenu(!showTextColorMenu)}
-                  disabled={!selectedText}
-                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2 ${
-                    !selectedText ? "opacity-50 cursor-not-allowed" : ""
+                  disabled={!selectedText || selectedText?.locked}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
                   }`}
                 >
                   <img src={textColorIcon} alt="Text Color" className="w-auto h-4" />
@@ -1470,29 +1504,31 @@ function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                {showTextColorMenu && (
+                {showTextColorMenu && !selectedText?.locked && (
                   <div 
                     className="absolute bottom-full left-0 mb-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {selectedText ? (
-                      <input
-                        id="text-color-input-in-dropdown"
-                        type="color"
+                    <input
+                      id="text-color-input-in-dropdown"
+                      type="color"
                         value={selectedText.color}
-                        onChange={(e) => {
-                          const newColor = e.target.value;
-                          setTextColor(newColor);
-                          // 선택된 텍스트가 있으면 해당 텍스트의 색상도 변경
-                          setTexts((prevTexts) =>
-                            prevTexts.map((t) =>
-                              t.id === selectedText.id ? { ...t, color: newColor } : t
-                            )
-                          );
-                          setSelectedText({ ...selectedText, color: newColor });
-                        }}
+                      onChange={(e) => {
+                          if (selectedText && !selectedText.locked) {
+                            const newColor = e.target.value;
+                            setTextColor(newColor);
+                            // 선택된 텍스트가 있으면 해당 텍스트의 색상도 변경
+                            setTexts((prevTexts) =>
+                              prevTexts.map((t) =>
+                                t.id === selectedText.id ? { ...t, color: newColor } : t
+                              )
+                            );
+                            setSelectedText({ ...selectedText, color: newColor });
+                          }
+                      }}
                         onClick={(e) => e.stopPropagation()}
-                        className="h-32 w-full cursor-pointer"
+                      className="h-32 w-full cursor-pointer"
                         style={{ 
                           border: 'none',
                           outline: 'none',
@@ -1512,91 +1548,123 @@ function App() {
               </div>
               <button 
                 onClick={handleBoldToggle}
-                disabled={!selectedText}
-                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 ${
+                disabled={!selectedText || selectedText?.locked}
+                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 ${
                   selectedText?.fontWeight === "bold" ? "bg-gray-800" : ""
-                } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"}`}
                 style={{ fontWeight: "bold" }}
               >
                 B
               </button>
               <button 
                 onClick={handleItalicToggle}
-                disabled={!selectedText}
-                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 ${
+                disabled={!selectedText || selectedText?.locked}
+                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 ${
                   selectedText?.fontStyle === "italic" ? "bg-gray-800" : ""
-                } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"}`}
                 style={{ fontStyle: "italic" }}
               >
                 I
               </button>
-              <div className="flex gap-1">
-                <button
-                  onClick={handleTextAlignLeft}
-                  disabled={!selectedText}
-                  className={`px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border ${
-                    selectedText?.textAlign === "left"
-                      ? "border-pink-300 bg-pink-300/20"
-                      : "border-pink-300/20"
-                  } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  <img src={alignLeftIcon} alt="Align Left" className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={handleTextAlignCenter}
-                  disabled={!selectedText}
-                  className={`px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border ${
-                    selectedText?.textAlign === "center"
-                      ? "border-pink-300 bg-pink-300/20"
-                      : "border-pink-300/20"
-                  } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  <img src={alignCenterIcon} alt="Align Center" className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={handleTextAlignRight}
-                  disabled={!selectedText}
-                  className={`px-2 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border ${
-                    selectedText?.textAlign === "right"
-                      ? "border-pink-300 bg-pink-300/20"
-                      : "border-pink-300/20"
-                  } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  <img src={alignRightIcon} alt="Align Right" className="w-4 h-4" />
-                </button>
-              </div>
+            </div>
+            {/* 세 번째 줄: 텍스트 정렬 버튼 */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleTextAlignLeft}
+                disabled={!selectedText || selectedText?.locked}
+                className={`px-2 py-1 bg-black dark:bg-black rounded text-sm border ${
+                  selectedText?.textAlign === "left"
+                    ? "border-pink-300 bg-pink-300/20"
+                    : "border-pink-300/20"
+                } ${!selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"}`}
+              >
+                <img src={alignLeftIcon} alt="Align Left" className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleTextAlignCenter}
+                disabled={!selectedText || selectedText?.locked}
+                className={`px-2 py-1 bg-black dark:bg-black rounded text-sm border ${
+                  selectedText?.textAlign === "center"
+                    ? "border-pink-300 bg-pink-300/20"
+                    : "border-pink-300/20"
+                } ${!selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"}`}
+              >
+                <img src={alignCenterIcon} alt="Align Center" className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleTextAlignRight}
+                disabled={!selectedText || selectedText?.locked}
+                className={`px-2 py-1 bg-black dark:bg-black rounded text-sm border ${
+                  selectedText?.textAlign === "right"
+                    ? "border-pink-300 bg-pink-300/20"
+                    : "border-pink-300/20"
+                } ${!selectedText || selectedText?.locked ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"}`}
+              >
+                <img src={alignRightIcon} alt="Align Right" className="w-4 h-4" />
+              </button>
+              {/* Lock 버튼 */}
+              <button
+                onClick={() => {
+                  if (selectedText) {
+                    const updatedText = {
+                      ...selectedText,
+                      locked: !selectedText.locked,
+                    };
+                    setTexts(
+                      texts.map((t) =>
+                        t.id === selectedText.id ? updatedText : t
+                      )
+                    );
+                    setSelectedText(updatedText);
+                  }
+                }}
+                disabled={!selectedText}
+                className={`w-8 h-8 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center justify-center text-white hover:bg-gray-800 dark:hover:bg-gray-800 ${
+                  selectedText?.locked ? "bg-pink-300/20" : ""
+                } ${!selectedText ? "opacity-50 cursor-not-allowed" : ""}`}
+                title={selectedText?.locked ? "Unlock" : "Lock"}
+              >
+                {selectedText?.locked ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
             </div>
           </div>
 
           {/* 구분선 */}
           <div className="h-20 w-px bg-pink-300/30 dark:bg-pink-300/30"></div>
 
-          {/* 도형 편집 칸 (도형 선택 시 표시) */}
-          {selectedShape && (
-            <div className="flex flex-col gap-2">
-              {/* 첫 번째 줄: Fill Color, Effects */}
-              <div className="flex items-center gap-2">
-                <div className="relative" ref={shapeColorMenuRef}>
-                  <button 
-                    onClick={() => {
-                      if (selectedShape.type !== "image") {
-                        setShowShapeColorMenu(!showShapeColorMenu);
-                      }
-                    }}
-                    disabled={selectedShape.type === "image"}
-                    className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
-                      selectedShape.type === "image"
-                        ? "text-gray-500 cursor-not-allowed opacity-50"
-                        : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
-                    }`}
-                  >
+          {/* 도형 편집 칸 */}
+          <div className="flex flex-col gap-2 min-w-[270px]">
+            {/* 첫 번째 줄: Fill Color, Effects, Lock */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative" ref={shapeColorMenuRef}>
+                <button 
+                  onClick={() => {
+                    if (selectedShape && selectedShape.type !== "image" && !selectedShape.locked) {
+                      setShowShapeColorMenu(!showShapeColorMenu);
+                    }
+                  }}
+                  disabled={!selectedShape || selectedShape.type === "image" || selectedShape.locked}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedShape || selectedShape.type === "image" || selectedShape.locked
+                      ? "text-gray-500 cursor-not-allowed opacity-50"
+                      : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                  }`}
+                >
                     <img src={shapeColorIcon} alt="Shape Color" className="w-auto h-4" />
                     <span>Fill Color</span>
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {showShapeColorMenu && selectedShape.type !== "image" && (
+                  {showShapeColorMenu && selectedShape && selectedShape.type !== "image" && !selectedShape.locked && (
                     <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 p-3">
                       <input
                         id="shape-color-input-in-dropdown"
@@ -1608,32 +1676,33 @@ function App() {
                           updateSelectedShape(newColor);
                         }}
                         className="h-32 w-full cursor-pointer"
+                        disabled={selectedShape?.locked}
                       />
                     </div>
                   )}
                 </div>
-                {/* Effects 버튼 */}
-                <div className="relative" ref={effectsMenuRef}>
-                  <button 
-                    onClick={() => {
-                      if (!isNonTrianglePolygon(selectedShape.type)) {
-                        setShowEffectsMenu(!showEffectsMenu);
-                      }
-                    }}
-                    disabled={isNonTrianglePolygon(selectedShape.type)}
-                    className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
-                      isNonTrianglePolygon(selectedShape.type)
-                        ? "text-gray-500 cursor-not-allowed opacity-50"
-                        : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
-                    }`}
-                  >
+              {/* Effects 버튼 */}
+              <div className="relative" ref={effectsMenuRef}>
+                <button 
+                  onClick={() => {
+                    if (selectedShape && !isNonTrianglePolygon(selectedShape.type)) {
+                      setShowEffectsMenu(!showEffectsMenu);
+                    }
+                  }}
+                  disabled={!selectedShape || isNonTrianglePolygon(selectedShape?.type) || selectedShape?.locked}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedShape || isNonTrianglePolygon(selectedShape?.type) || selectedShape?.locked
+                      ? "text-gray-500 cursor-not-allowed opacity-50"
+                      : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                  }`}
+                >
                     <img src={effectsIcon} alt="Effects" className="w-auto h-4" />
                     <span>Effect</span>
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {showEffectsMenu && !isNonTrianglePolygon(selectedShape.type) && (
+                {showEffectsMenu && selectedShape && !isNonTrianglePolygon(selectedShape.type) && (
                     <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[200px]">
                       <div className="px-3 py-1 text-xs text-gray-400 border-b border-pink-300/10">
                         Shadow Effects
@@ -1829,103 +1898,140 @@ function App() {
                     </div>
                   )}
                 </div>
-              </div>
-              {/* 두 번째 줄: Stroke, Corner Radius */}
-              <div className="flex items-center gap-2">
-                <div className="relative" ref={strokeMenuRef}>
-                  <button 
-                    onClick={() => setShowStrokeMenu(!showStrokeMenu)}
-                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
-                  >
+              {/* Lock 버튼 */}
+              <button
+                onClick={() => {
+                  if (selectedShape) {
+                    const updatedShape = {
+                      ...selectedShape,
+                      locked: !selectedShape.locked,
+                    };
+                    setShapes(
+                      shapes.map((s) =>
+                        s.id === selectedShape.id ? updatedShape : s
+                      )
+                    );
+                    setSelectedShape(updatedShape);
+                  }
+                }}
+                disabled={!selectedShape}
+                className={`w-8 h-8 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center justify-center ${
+                  selectedShape?.locked ? "bg-pink-300/20" : ""
+                } ${!selectedShape ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"}`}
+                title={selectedShape?.locked ? "Unlock" : "Lock"}
+              >
+                {selectedShape?.locked ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            {/* 두 번째 줄: Stroke, Corner Radius */}
+            <div className="flex items-center gap-2">
+              <div className="relative" ref={strokeMenuRef}>
+                <button 
+                  onClick={() => setShowStrokeMenu(!showStrokeMenu)}
+                  disabled={!selectedShape || selectedShape?.locked}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedShape || selectedShape?.locked
+                      ? "text-gray-500 cursor-not-allowed opacity-50"
+                      : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                  }`}
+                >
                     <img src={strokeIcon} alt="Stroke" className="w-auto h-4" />
                     <span>Stroke</span>
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {showStrokeMenu && (
-                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[220px]">
-                      <div className="px-3 py-2">
-                        <div className="mb-3">
-                          <label className="text-xs text-white block mb-2">Stroke Color:</label>
-                          <input
-                            type="color"
-                            value={selectedShape?.strokeColor ?? "#000000"}
-                            onChange={(e) => {
-                              updateSelectedShape(
-                                undefined, undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, undefined, undefined,
-                                e.target.value,
-                                selectedShape?.strokeWidth ?? 1
-                              );
-                            }}
-                            className="w-full h-10 cursor-pointer"
-                          />
-                        </div>
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="text-xs text-white">Stroke Width:</label>
-                            <span className="text-xs text-gray-400">
-                              {selectedShape?.strokeWidth ?? 0}px
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max="20"
-                            step="1"
-                            value={selectedShape?.strokeWidth ?? 0}
-                            onChange={(e) => {
-                              const width = parseInt(e.target.value);
-                              updateSelectedShape(
-                                undefined, undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, undefined, undefined, undefined,
-                                undefined, undefined, undefined, undefined,
-                                selectedShape?.strokeColor ?? "#000000",
-                                width
-                              );
-                            }}
-                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-300"
-                          />
-                        </div>
-                        <button
-                          onClick={() => {
+                {showStrokeMenu && selectedShape && (
+                  <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[220px]">
+                    <div className="px-3 py-2">
+                      <div className="mb-3">
+                        <label className="text-xs text-white block mb-2">Stroke Color:</label>
+                        <input
+                          type="color"
+                          value={selectedShape?.strokeColor ?? "#000000"}
+                          onChange={(e) => {
                             updateSelectedShape(
                               undefined, undefined, undefined, undefined, undefined, undefined,
                               undefined, undefined, undefined, undefined, undefined,
                               undefined, undefined, undefined, undefined,
-                              undefined,
-                              0
+                              e.target.value,
+                              selectedShape?.strokeWidth ?? 1
                             );
-                            setShowStrokeMenu(false);
                           }}
-                          className="w-full px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-white rounded"
-                        >
-                          Remove Stroke
-                        </button>
+                          className="w-full h-10 cursor-pointer"
+                        />
                       </div>
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs text-white">Stroke Width:</label>
+                          <span className="text-xs text-gray-400">
+                            {selectedShape?.strokeWidth ?? 0}px
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="20"
+                          step="1"
+                          value={selectedShape?.strokeWidth ?? 0}
+                          onChange={(e) => {
+                            const width = parseInt(e.target.value);
+                            updateSelectedShape(
+                              undefined, undefined, undefined, undefined, undefined, undefined,
+                              undefined, undefined, undefined, undefined, undefined,
+                              undefined, undefined, undefined, undefined,
+                              selectedShape?.strokeColor ?? "#000000",
+                              width
+                            );
+                          }}
+                          className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-300"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          updateSelectedShape(
+                            undefined, undefined, undefined, undefined, undefined, undefined,
+                            undefined, undefined, undefined, undefined, undefined,
+                            undefined, undefined, undefined, undefined,
+                            undefined,
+                            0
+                          );
+                          setShowStrokeMenu(false);
+                        }}
+                        className="w-full px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-white rounded"
+                      >
+                        Remove Stroke
+                      </button>
                     </div>
-                  )}
-                </div>
-                {/* Corner Radius */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <img 
-                      src={cornerRadiusIcon} 
-                      alt="Corner Radius" 
-                      className={`w-auto h-4 ${selectedShape.type !== "roundedRectangle" ? "opacity-50" : ""}`} 
-                    />
-                    <span className={`text-sm ${selectedShape.type !== "roundedRectangle" ? "text-gray-500" : "text-white dark:text-white"}`}>
-                      Corner Radius:
-                    </span>
-                    <input
-                      ref={borderRadiusInputRef}
-                      type="text"
-                      value={borderRadiusInputValue}
-                      disabled={selectedShape.type !== "roundedRectangle"}
-                      onChange={(e) => {
-                        if (selectedShape.type !== "roundedRectangle") return;
+                  </div>
+                )}
+              </div>
+              {/* Corner Radius */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <img 
+                    src={cornerRadiusIcon} 
+                    alt="Corner Radius" 
+                    className={`w-auto h-4 ${!selectedShape || selectedShape.type !== "roundedRectangle" ? "opacity-50" : ""}`} 
+                  />
+                  <span className={`text-sm ${!selectedShape || selectedShape.type !== "roundedRectangle" ? "text-gray-500" : "text-white dark:text-white"}`}>
+                    Corner Radius:
+                  </span>
+                  <input
+                    ref={borderRadiusInputRef}
+                    type="text"
+                    value={borderRadiusInputValue}
+                    disabled={!selectedShape || selectedShape.type !== "roundedRectangle" || selectedShape.locked}
+                    onChange={(e) => {
+                      if (!selectedShape || selectedShape.type !== "roundedRectangle" || selectedShape.locked) return;
                         const input = e.target.value;
                         // 빈 문자열이거나 숫자만 허용
                         if (input === '' || /^\d+$/.test(input)) {
@@ -1950,7 +2056,7 @@ function App() {
                         }
                       }}
                       onBlur={(e) => {
-                        if (selectedShape.type !== "roundedRectangle") return;
+                        if (!selectedShape || selectedShape.type !== "roundedRectangle") return;
                         // 포커스를 잃을 때 빈 값이면 현재 borderRadius 값으로 복원
                         const value = e.target.value;
                         if (value === '' || isNaN(Number(value)) || value === '0') {
@@ -1969,7 +2075,7 @@ function App() {
                         }
                       }}
                       className={`w-16 px-2 py-1 bg-black dark:bg-black border rounded text-sm ${
-                        selectedShape.type !== "roundedRectangle" 
+                        !selectedShape || selectedShape.type !== "roundedRectangle" 
                           ? "text-gray-500 border-gray-600 cursor-not-allowed opacity-50" 
                           : "text-white border-pink-300/20"
                       }`}
@@ -1981,16 +2087,16 @@ function App() {
                       min="0"
                       max={Math.min(shapeWidth, shapeHeight) / 2}
                       value={shapeBorderRadius}
-                      disabled={selectedShape.type !== "roundedRectangle"}
+                      disabled={!selectedShape || selectedShape.type !== "roundedRectangle"}
                       onChange={(e) => {
-                        if (selectedShape.type !== "roundedRectangle") return;
+                        if (!selectedShape || selectedShape.type !== "roundedRectangle") return;
                         const newRadius = Number(e.target.value);
                         setShapeBorderRadius(newRadius);
                         setBorderRadiusInputValue(newRadius.toString());
                         updateSelectedShape(undefined, undefined, undefined, undefined, undefined, newRadius);
                       }}
                       className={`flex-1 h-2 bg-gray-700 rounded-lg appearance-none ${
-                        selectedShape.type !== "roundedRectangle" 
+                        !selectedShape || selectedShape.type !== "roundedRectangle" 
                           ? "opacity-50 cursor-not-allowed" 
                           : "cursor-pointer accent-pink-300"
                       }`}
@@ -1998,95 +2104,104 @@ function App() {
                   </div>
                 </div>
               </div>
-              {/* 세 번째 줄: z-index 조정 버튼들 */}
-              <div className="flex items-center gap-2">
-                {/* Bring Forward 버튼 */}
-                <div className="relative" ref={bringForwardMenuRef}>
-                  <button 
-                    onClick={() => {
+            {/* 세 번째 줄: z-index 조정 버튼들 */}
+            <div className="flex items-center gap-2">
+              {/* Bring Forward 버튼 */}
+              <div className="relative" ref={bringForwardMenuRef}>
+                <button 
+                  onClick={() => {
+                    if (selectedShape) {
                       setShowBringForwardMenu(!showBringForwardMenu);
-                    }}
-                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
-                    title="Bring Forward"
-                  >
-                    {/* 두 개의 겹쳐진 사각형 아이콘 */}
-                    <div className="relative w-5 h-5">
-                      <div className="absolute top-0 left-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
-                      <div className="absolute bottom-0 right-0 w-3 h-3 border border-white"></div>
-                    </div>
-                    <span>Bring Forward</span>
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {showBringForwardMenu && (
-                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
-                      <button
-                        onClick={() => {
-                          bringForward();
-                          setShowBringForwardMenu(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
-                      >
-                        Bring Forward
-                      </button>
-                      <button
-                        onClick={() => {
-                          bringToFront();
-                          setShowBringForwardMenu(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
-                      >
-                        Bring to Front
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {/* Send Backward 버튼 */}
-                <div className="relative" ref={sendBackwardMenuRef}>
-                  <button 
-                    onClick={() => {
+                    }
+                  }}
+                  disabled={!selectedShape}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedShape ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                  }`}
+                  title="Bring Forward"
+                >
+                  {/* 두 개의 겹쳐진 사각형 아이콘 */}
+                  <div className="relative w-5 h-5">
+                    <div className="absolute top-0 left-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
+                    <div className="absolute bottom-0 right-0 w-3 h-3 border border-white"></div>
+                  </div>
+                  <span>Bring Forward</span>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showBringForwardMenu && selectedShape && (
+                  <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
+                    <button
+                      onClick={() => {
+                        bringForward();
+                        setShowBringForwardMenu(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                    >
+                      Bring Forward
+                    </button>
+                    <button
+                      onClick={() => {
+                        bringToFront();
+                        setShowBringForwardMenu(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
+                    >
+                      Bring to Front
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* Send Backward 버튼 */}
+              <div className="relative" ref={sendBackwardMenuRef}>
+                <button 
+                  onClick={() => {
+                    if (selectedShape) {
                       setShowSendBackwardMenu(!showSendBackwardMenu);
-                    }}
-                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
-                    title="Send Backward"
-                  >
-                    {/* 두 개의 겹쳐진 사각형 아이콘 */}
-                    <div className="relative w-5 h-5">
-                      <div className="absolute top-0 left-0 w-3 h-3 border border-white"></div>
-                      <div className="absolute bottom-0 right-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
-                    </div>
-                    <span>Send Backward</span>
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {showSendBackwardMenu && (
-                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
-                      <button
-                        onClick={() => {
-                          sendBackward();
-                          setShowSendBackwardMenu(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
-                      >
-                        Send Backward
-                      </button>
-                      <button
-                        onClick={() => {
-                          sendToBack();
-                          setShowSendBackwardMenu(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
-                      >
-                        Send to Back
-                      </button>
-                    </div>
-                  )}
-                </div>
+                    }
+                  }}
+                  disabled={!selectedShape}
+                  className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                    !selectedShape ? "opacity-50 cursor-not-allowed text-gray-500" : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                  }`}
+                  title="Send Backward"
+                >
+                  {/* 두 개의 겹쳐진 사각형 아이콘 */}
+                  <div className="relative w-5 h-5">
+                    <div className="absolute top-0 left-0 w-3 h-3 border border-white"></div>
+                    <div className="absolute bottom-0 right-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
+                  </div>
+                  <span>Send Backward</span>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showSendBackwardMenu && selectedShape && (
+                  <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
+                    <button
+                      onClick={() => {
+                        sendBackward();
+                        setShowSendBackwardMenu(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                    >
+                      Send Backward
+                    </button>
+                    <button
+                      onClick={() => {
+                        sendToBack();
+                        setShowSendBackwardMenu(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
+                    >
+                      Send to Back
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* 캔버스 영역 (파워포인트 스타일 - 흰색 배경) */}
@@ -2117,6 +2232,7 @@ function App() {
                   border: "2px dashed #f9a8d4",
                   backgroundColor: "rgba(249, 168, 212, 0.2)",
                   pointerEvents: "none",
+                  zIndex: 9999, // 모든 도형 위에 표시되도록 매우 높은 z-index 설정
                   borderRadius: pendingShapeType === "circle" || pendingShapeType === "ellipse" 
                     ? "50%" 
                     : pendingShapeType === "roundedRectangle" 
@@ -2171,16 +2287,16 @@ function App() {
                       }}
                     >
                       {shape.type === "triangle" ? (
-                        <polygon
-                          points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
-                          fill={shape.color}
+                      <polygon
+                        points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
+                        fill={shape.color}
                           stroke={shape.strokeWidth && shape.strokeWidth > 0 
                             ? (shape.strokeColor ?? "#000000")
                             : (isSelected ? "#f9a8d4" : "none")}
                           strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
                             ? shape.strokeWidth 
                             : (isSelected ? "2" : "0")}
-                        />
+                      />
                       ) : shape.type === "diamond" ? (
                         <polygon
                           points={`${shape.width / 2},0 ${shape.width},${shape.height / 2} ${shape.width / 2},${shape.height} 0,${shape.height / 2}`}
@@ -2239,8 +2355,8 @@ function App() {
                         opacity: shape.opacity !== undefined ? shape.opacity : undefined,
                         border: shape.strokeWidth && shape.strokeWidth > 0 
                           ? `${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"}`
-                          : (isSelected ? "2px solid #f9a8d4" : "none"),
-                        cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                          : (isSelected ? (shape.locked ? "2px solid #ff6b6b" : "2px solid #f9a8d4") : "none"),
+                        cursor: shape.locked ? "not-allowed" : (isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab"),
                         userSelect: "none",
                         filter: (() => {
                           const filters: string[] = [];
@@ -2260,14 +2376,14 @@ function App() {
                     <div
                       style={{
                         ...getShapeStyle(shape),
-                        outline: isSelected ? "2px solid #f9a8d4" : "none",
+                        outline: isSelected ? (shape.locked ? "2px solid #ff6b6b" : "2px solid #f9a8d4") : "none",
                         outlineOffset: isSelected ? (shape.strokeWidth && shape.strokeWidth > 0 ? `-${shape.strokeWidth + 2}px` : "-2px") : "0",
-                        cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                        cursor: shape.locked ? "not-allowed" : (isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab"),
                         userSelect: "none",
                       }}
                     />
                   )}
-                  {isSelected && (
+                  {isSelected && !shape.locked && (
                     <>
                       {/* 모서리 핸들 */}
                       <div
@@ -2388,6 +2504,29 @@ function App() {
                         }}
                       />
                     </>
+                  )}
+                  {/* 잠금 아이콘 표시 */}
+                  {shape.locked && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "4px",
+                        right: "4px",
+                        width: "20px",
+                        height: "20px",
+                        backgroundColor: "rgba(255, 107, 107, 0.9)",
+                        borderRadius: "4px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 1000,
+                      }}
+                      title="잠금됨"
+                    >
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
                   )}
                 </div>
               );
@@ -2428,9 +2567,9 @@ function App() {
                     fontWeight: text.fontWeight,
                     fontStyle: text.fontStyle,
                     textAlign: text.textAlign,
-                    cursor: isDraggingText && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                    cursor: text.locked ? "not-allowed" : (isDraggingText && isSelected ? "grabbing" : isSelected ? "move" : "grab"),
                     userSelect: "none",
-                    border: isSelected ? "2px dashed #f9a8d4" : "none",
+                    border: isSelected ? (text.locked ? "2px dashed #ff6b6b" : "2px dashed #f9a8d4") : "none",
                     padding: isSelected ? "2px" : "0",
                     borderRadius: "2px",
                     backgroundColor: isSelected ? "rgba(249, 168, 212, 0.1)" : "transparent",
@@ -2441,8 +2580,9 @@ function App() {
                   }}
                 >
                   {text.text}
-                  {isSelected && (
+                  {isSelected && !text.locked && (
                     <>
+                      {/* 모서리 핸들 */}
                       {/* 모서리 핸들 */}
                       <div
                         className="text-resize-handle"
@@ -2562,6 +2702,29 @@ function App() {
                         }}
                       />
                     </>
+                  )}
+                  {/* 잠금 아이콘 표시 */}
+                  {text.locked && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "4px",
+                        right: "4px",
+                        width: "20px",
+                        height: "20px",
+                        backgroundColor: "rgba(255, 107, 107, 0.9)",
+                        borderRadius: "4px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 1000,
+                      }}
+                      title="잠금됨"
+                    >
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
                   )}
                 </div>
               );
@@ -2648,21 +2811,21 @@ function App() {
             className="absolute inset-0 pointer-events-none overflow-auto"
             style={{ zIndex: 1 }}
           >
-            <SyntaxHighlighter
-              language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
-              style={dracula}
-              customStyle={{
-                margin: 0,
-                padding: "1rem",
-                fontSize: "0.75rem",
+          <SyntaxHighlighter
+            language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
+            style={dracula}
+            customStyle={{
+              margin: 0,
+              padding: "1rem",
+              fontSize: "0.75rem",
                 backgroundColor: "transparent",
-                height: "100%",
-              }}
-              showLineNumbers={false}
+              height: "100%",
+            }}
+            showLineNumbers={false}
               PreTag="div"
-            >
+          >
               {codeContent || (codeView === "xml" ? "<!-- 코드가 여기에 표시됩니다 -->" : codeView === "css" ? "/* 코드가 여기에 표시됩니다 */" : "// 코드가 여기에 표시됩니다")}
-            </SyntaxHighlighter>
+          </SyntaxHighlighter>
           </div>
           {/* 편집 가능한 textarea */}
           <textarea
