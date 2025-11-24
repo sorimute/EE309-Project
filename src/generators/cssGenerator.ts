@@ -110,7 +110,7 @@ export const generateCSS = (shapes: Shape[], texts: Text[]): string => {
   };
   
   const getTextCSS = (text: Text) => {
-    let css = `.text-${text.id} {\n  position: absolute;\n  left: ${text.x}px;\n  top: ${text.y}px;\n  width: ${text.width}px;\n  height: ${text.height}px;\n  font-size: ${text.fontSize}px;\n  color: ${text.color};\n  font-family: ${text.fontFamily};\n  font-weight: ${text.fontWeight};\n  font-style: ${text.fontStyle};\n  text-align: ${text.textAlign};\n}`;
+    let css = `.text-${text.id} {\n  position: absolute;\n  left: ${text.x}px;\n  top: ${text.y}px;\n  width: ${text.width}px;\n  height: ${text.height}px;\n  font-size: ${text.fontSize}px;\n  color: ${text.color};\n  font-family: ${text.fontFamily};\n  font-weight: ${text.fontWeight};\n  font-style: ${text.fontStyle};\n  text-align: ${text.textAlign};\n  z-index: ${text.zIndex};\n}`;
     return css;
   };
   

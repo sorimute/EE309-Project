@@ -12,5 +12,6 @@ export interface Text {
   fontStyle: string;
   textAlign: "left" | "center" | "right";
   locked?: boolean; // 잠금 상태
+  zIndex: number;
 }
 

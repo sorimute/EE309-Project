@@ -144,7 +144,7 @@ export const generateReact = (shapes: Shape[], texts: Text[]): string => {
   
   const getTextReact = (text: Text) => {
     const escapedText = text.text.replace(/'/g, "\\'").replace(/\n/g, "\\n");
-    let style = `      position: 'absolute',\n      left: ${text.x},\n      top: ${text.y},\n      width: ${text.width},\n      height: ${text.height},\n      fontSize: ${text.fontSize},\n      color: '${text.color}',\n      fontFamily: '${text.fontFamily}',\n      fontWeight: '${text.fontWeight}',\n      fontStyle: '${text.fontStyle}',\n      textAlign: '${text.textAlign}',`;
+    let style = `      position: 'absolute',\n      left: ${text.x},\n      top: ${text.y},\n      width: ${text.width},\n      height: ${text.height},\n      fontSize: ${text.fontSize},\n      color: '${text.color}',\n      fontFamily: '${text.fontFamily}',\n      fontWeight: '${text.fontWeight}',\n      fontStyle: '${text.fontStyle}',\n      textAlign: '${text.textAlign}',\n      zIndex: ${text.zIndex},`;
     return `  <div\n    className="text-${text.id}"\n    style={{\n${style}\n    }}\n  >\n    ${escapedText}\n  </div>`;
   };
   
