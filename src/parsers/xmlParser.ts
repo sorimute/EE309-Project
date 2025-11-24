@@ -76,7 +76,7 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
       const textAlign = match[12] as "left" | "center" | "right";
       const zIndex = match[13] ? parseInt(match[13]) : 0;
       
-      parsedTexts.push({
+      const parsedText: Text = {
         id,
         x,
         y,
@@ -90,7 +90,9 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
         fontStyle,
         textAlign,
         zIndex,
-      });
+      };
+      
+      parsedTexts.push(parsedText);
     }
     
     return { shapes: parsedShapes, texts: parsedTexts };

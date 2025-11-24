@@ -22,5 +22,6 @@ export interface Shape {
   strokeColor?: string;
   strokeWidth?: number;
   imageUrl?: string;
+  locked?: boolean; // 잠금 상태
 }
 

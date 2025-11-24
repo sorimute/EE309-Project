@@ -79,7 +79,7 @@ export const parseReact = (react: string): { shapes: Shape[]; texts: Text[] } =>
       
       if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
       
-      parsedTexts.push({
+      const parsedText: Text = {
         id,
         x: parseInt(leftMatch[1]),
         y: parseInt(topMatch[1]),
@@ -93,7 +93,9 @@ export const parseReact = (react: string): { shapes: Shape[]; texts: Text[] } =>
         fontStyle: "normal",
         textAlign: "left",
         zIndex: zIndexMatch ? parseInt(zIndexMatch[1]) : 0,
-      });
+      };
+      
+      parsedTexts.push(parsedText);
     }
     
     return { shapes: parsedShapes, texts: parsedTexts };
