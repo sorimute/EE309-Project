@@ -75,6 +75,7 @@ export const parseReact = (react: string): { shapes: Shape[]; texts: Text[] } =>
       const heightMatch = styleContent.match(/height:\s*(\d+)/);
       const fontSizeMatch = styleContent.match(/fontSize:\s*(\d+)/);
       const colorMatch = styleContent.match(/color:\s*'([^']+)'/);
+      const zIndexMatch = styleContent.match(/zIndex:\s*(\d+)/);
       
       if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
       
@@ -91,6 +92,7 @@ export const parseReact = (react: string): { shapes: Shape[]; texts: Text[] } =>
         fontWeight: "normal",
         fontStyle: "normal",
         textAlign: "left",
+        zIndex: zIndexMatch ? parseInt(zIndexMatch[1]) : 0,
       });
     }
     

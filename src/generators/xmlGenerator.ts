@@ -59,7 +59,7 @@ export const generateXML = (shapes: Shape[], texts: Text[]): string => {
     <position x="${text.x}" y="${text.y}" />
     <size width="${text.width}" height="${text.height}" />
     <content>${text.text}</content>
-    <style fontSize="${text.fontSize}" color="${text.color}" fontFamily="${text.fontFamily}" fontWeight="${text.fontWeight}" fontStyle="${text.fontStyle}" textAlign="${text.textAlign}" />
+    <style fontSize="${text.fontSize}" color="${text.color}" fontFamily="${text.fontFamily}" fontWeight="${text.fontWeight}" fontStyle="${text.fontStyle}" textAlign="${text.textAlign}" zIndex="${text.zIndex}" />
   </text>`;
   });
   

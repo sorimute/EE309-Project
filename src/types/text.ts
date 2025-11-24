@@ -11,5 +11,6 @@ export interface Text {
   fontWeight: string;
   fontStyle: string;
   textAlign: "left" | "center" | "right";
+  zIndex: number;
 }
 

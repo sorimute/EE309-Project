@@ -53,6 +53,7 @@ const EditableText = forwardRef<HTMLDivElement, EditableTextProps>(
           wordWrap: "break-word",
           overflow: "hidden",
           boxSizing: "border-box",
+          zIndex: text.zIndex,
         }}
       />
     );
