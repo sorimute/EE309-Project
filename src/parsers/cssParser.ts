@@ -84,6 +84,7 @@ export const parseCSS = (css: string): { shapes: Shape[]; texts: Text[] } => {
       const fontWeightMatch = styleContent.match(/font-weight:\s*([^;]+);/);
       const fontStyleMatch = styleContent.match(/font-style:\s*([^;]+);/);
       const textAlignMatch = styleContent.match(/text-align:\s*([^;]+);/);
+      const zIndexMatch = styleContent.match(/z-index:\s*(\d+);/);
       
       if (!leftMatch || !topMatch || !widthMatch || !heightMatch) continue;
       
@@ -100,6 +101,7 @@ export const parseCSS = (css: string): { shapes: Shape[]; texts: Text[] } => {
         fontWeight: (fontWeightMatch ? fontWeightMatch[1].trim() : "normal") as "normal" | "bold",
         fontStyle: (fontStyleMatch ? fontStyleMatch[1].trim() : "normal") as "normal" | "italic",
         textAlign: (textAlignMatch ? textAlignMatch[1].trim() : "left") as "left" | "center" | "right",
+        zIndex: zIndexMatch ? parseInt(zIndexMatch[1]) : 0,
       });
     }
     

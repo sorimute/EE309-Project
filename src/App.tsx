@@ -85,6 +85,10 @@ function App() {
   const [textDragOffset, setTextDragOffset] = useState({ x: 0, y: 0 });
   const [pendingText, setPendingText] = useState(false);
   const [editingTextId, setEditingTextId] = useState<number | null>(null);
+  const [copiedShape, setCopiedShape] = useState<Shape | null>(null);
+  const [copiedText, setCopiedText] = useState<Text | null>(null);
+  const [lastPastedPosition, setLastPastedPosition] = useState<{ x: number; y: number } | null>(null);
+  const [pasteCount, setPasteCount] = useState(0);
   const textInputRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -348,6 +352,104 @@ function App() {
           setSelectedText(null);
         }
       }
+      
+      // Ctrl+C: 복사
+      if ((event.ctrlKey || event.metaKey) && event.key === "c") {
+        if (selectedShape) {
+          event.preventDefault();
+          setCopiedShape(selectedShape);
+          setCopiedText(null);
+          setLastPastedPosition(null); // 복사 시 붙여넣기 위치 초기화
+          setPasteCount(0);
+        } else if (selectedText) {
+          event.preventDefault();
+          setCopiedText(selectedText);
+          setCopiedShape(null);
+          setLastPastedPosition(null); // 복사 시 붙여넣기 위치 초기화
+          setPasteCount(0);
+        }
+      }
+      
+      // Ctrl+V: 붙여넣기
+      if ((event.ctrlKey || event.metaKey) && event.key === "v") {
+        if (copiedShape && canvasRef.current) {
+          event.preventDefault();
+          const rect = canvasRef.current.getBoundingClientRect();
+          const offset = 20; // 붙여넣기 시 약간 오프셋을 주어 겹치지 않게
+          
+          // 생성 순서에 따라 zIndex 설정
+          const allItems = [
+            ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
+            ...texts.map(t => ({ id: t.id, type: 'text' as const }))
+          ].sort((a, b) => a.id - b.id);
+          
+          // 마지막 붙여넣기 위치가 있으면 그 위치에서 오프셋, 없으면 원본 위치에서 오프셋
+          let newX: number;
+          let newY: number;
+          
+          if (lastPastedPosition) {
+            // 이전 붙여넣기 위치에서 오프셋
+            newX = Math.max(0, Math.min(lastPastedPosition.x + offset, rect.width - copiedShape.width));
+            newY = Math.max(0, Math.min(lastPastedPosition.y + offset, rect.height - copiedShape.height));
+          } else {
+            // 첫 번째 붙여넣기: 원본 위치에서 오프셋
+            newX = Math.max(0, Math.min(copiedShape.x + offset, rect.width - copiedShape.width));
+            newY = Math.max(0, Math.min(copiedShape.y + offset, rect.height - copiedShape.height));
+          }
+          
+          const newShape: Shape = {
+            ...copiedShape,
+            id: Date.now(),
+            x: newX,
+            y: newY,
+            zIndex: allItems.length + 1,
+          };
+          
+          setShapes([...shapes, newShape]);
+          setSelectedShape(newShape);
+          setSelectedText(null);
+          setLastPastedPosition({ x: newX, y: newY });
+          setPasteCount(prev => prev + 1);
+        } else if (copiedText && canvasRef.current) {
+          event.preventDefault();
+          const rect = canvasRef.current.getBoundingClientRect();
+          const offset = 20; // 붙여넣기 시 약간 오프셋을 주어 겹치지 않게
+          
+          // 생성 순서에 따라 zIndex 설정
+          const allItems = [
+            ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
+            ...texts.map(t => ({ id: t.id, type: 'text' as const }))
+          ].sort((a, b) => a.id - b.id);
+          
+          // 마지막 붙여넣기 위치가 있으면 그 위치에서 오프셋, 없으면 원본 위치에서 오프셋
+          let newX: number;
+          let newY: number;
+          
+          if (lastPastedPosition) {
+            // 이전 붙여넣기 위치에서 오프셋
+            newX = Math.max(0, Math.min(lastPastedPosition.x + offset, rect.width - copiedText.width));
+            newY = Math.max(0, Math.min(lastPastedPosition.y + offset, rect.height - copiedText.height));
+          } else {
+            // 첫 번째 붙여넣기: 원본 위치에서 오프셋
+            newX = Math.max(0, Math.min(copiedText.x + offset, rect.width - copiedText.width));
+            newY = Math.max(0, Math.min(copiedText.y + offset, rect.height - copiedText.height));
+          }
+          
+          const newText: Text = {
+            ...copiedText,
+            id: Date.now(),
+            x: newX,
+            y: newY,
+            zIndex: allItems.length + 1,
+          };
+          
+          setTexts([...texts, newText]);
+          setSelectedText(newText);
+          setSelectedShape(null);
+          setLastPastedPosition({ x: newX, y: newY });
+          setPasteCount(prev => prev + 1);
+        }
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -355,7 +457,7 @@ function App() {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedShape, selectedText, pendingShapeType, pendingText, isDrawing, editingTextId]);
+  }, [selectedShape, selectedText, pendingShapeType, pendingText, isDrawing, editingTextId, copiedShape, copiedText, shapes, texts, lastPastedPosition]);
 
   // 텍스트 추가 핸들러
   const handleAddText = () => {
@@ -363,6 +465,12 @@ function App() {
       const rect = canvasRef.current.getBoundingClientRect();
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
+      
+      // 생성 순서에 따라 zIndex 설정: 모든 요소(도형+텍스트)를 id(생성 시간) 순으로 정렬하여 순차적으로 zIndex 할당
+      const allItems = [
+        ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
+        ...texts.map(t => ({ id: t.id, type: 'text' as const }))
+      ].sort((a, b) => a.id - b.id);
       
       const newText: Text = {
         id: Date.now(),
@@ -377,6 +485,7 @@ function App() {
         fontWeight: "normal",
         fontStyle: "normal",
         textAlign: "left",
+        zIndex: allItems.length + 1, // 생성 순서에 따라 zIndex 할당
       };
       
       setTexts([...texts, newText]);
@@ -453,16 +562,22 @@ function App() {
         const finalHeight = Math.max(20, height);
         // roundedRectangle의 경우 기본값 10으로 설정
         const initialBorderRadius = pendingShapeType === "roundedRectangle" ? 10 : undefined;
-        const maxZIndex = shapes.length > 0 ? Math.max(...shapes.map(s => s.zIndex)) : 0;
+        // 생성 순서에 따라 zIndex 설정: 모든 요소(도형+텍스트)를 id(생성 시간) 순으로 정렬하여 순차적으로 zIndex 할당
+        const allItems = [
+          ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
+          ...texts.map(t => ({ id: t.id, type: 'text' as const }))
+        ].sort((a, b) => a.id - b.id);
+        
+        const newShapeId = Date.now();
         const newShape: Shape = {
-          id: Date.now(),
+          id: newShapeId,
           type: pendingShapeType,
           x: Math.max(0, x),
           y: Math.max(0, y),
           width: finalWidth,
           height: finalHeight,
           color: DEFAULT_SHAPE_COLOR,
-          zIndex: maxZIndex + 1,
+          zIndex: allItems.length + 1, // 생성 순서에 따라 zIndex 할당
           borderRadius: initialBorderRadius,
         };
         setShapes([...shapes, newShape]);
@@ -554,97 +669,247 @@ function App() {
 
   // z-index 조정 함수들
   const bringToFront = () => {
-    if (!selectedShape) return;
-    setShapes(prevShapes => {
-      const maxZIndex = prevShapes.length > 0 ? Math.max(...prevShapes.map(s => s.zIndex)) : 0;
-      const updatedShape = { ...selectedShape, zIndex: maxZIndex + 1 };
-      const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
-      setSelectedShape(updatedShape);
-      return newShapes;
-    });
-  };
-
-  const bringForward = () => {
-    if (!selectedShape) return;
-    setShapes(prevShapes => {
-      // 현재 zIndex보다 큰 zIndex를 가진 도형들 중 가장 작은 값 찾기
-      const higherZIndices = prevShapes
-        .filter(s => s.id !== selectedShape.id && s.zIndex > selectedShape.zIndex)
-        .map(s => s.zIndex);
-      
-      if (higherZIndices.length === 0) {
-        // 더 높은 zIndex가 없으면 최대값 + 1
-        const maxZIndex = prevShapes.length > 0 ? Math.max(...prevShapes.map(s => s.zIndex)) : 0;
+    if (selectedShape) {
+      setShapes(prevShapes => {
+        const maxShapeZIndex = prevShapes.length > 0 ? Math.max(...prevShapes.map(s => s.zIndex)) : 0;
+        const maxTextZIndex = texts.length > 0 ? Math.max(...texts.map(t => t.zIndex)) : 0;
+        const maxZIndex = Math.max(maxShapeZIndex, maxTextZIndex);
         const updatedShape = { ...selectedShape, zIndex: maxZIndex + 1 };
         const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
         setSelectedShape(updatedShape);
         return newShapes;
-      } else {
-        // 가장 작은 더 높은 zIndex로 교환
-        const targetZIndex = Math.min(...higherZIndices);
-        const targetShape = prevShapes.find(s => s.zIndex === targetZIndex);
-        if (targetShape) {
-          const updatedSelected = { ...selectedShape, zIndex: targetZIndex };
-          const updatedTarget = { ...targetShape, zIndex: selectedShape.zIndex };
-          const newShapes = prevShapes.map(s => 
-            s.id === selectedShape.id ? updatedSelected : 
-            s.id === targetShape.id ? updatedTarget : s
-          );
-          setSelectedShape(updatedSelected);
+      });
+    } else if (selectedText) {
+      setTexts(prevTexts => {
+        const maxShapeZIndex = shapes.length > 0 ? Math.max(...shapes.map(s => s.zIndex)) : 0;
+        const maxTextZIndex = prevTexts.length > 0 ? Math.max(...prevTexts.map(t => t.zIndex)) : 0;
+        const maxZIndex = Math.max(maxShapeZIndex, maxTextZIndex);
+        const updatedText = { ...selectedText, zIndex: maxZIndex + 1 };
+        const newTexts = prevTexts.map(t => t.id === selectedText.id ? updatedText : t);
+        setSelectedText(updatedText);
+        return newTexts;
+      });
+    }
+  };
+
+  const bringForward = () => {
+    if (selectedShape) {
+      setShapes(prevShapes => {
+        // 도형과 텍스트를 통합하여 현재 zIndex보다 큰 zIndex를 가진 요소들 중 가장 작은 값 찾기
+        const allItems = [
+          ...prevShapes.filter(s => s.id !== selectedShape.id),
+          ...texts
+        ];
+        const higherZIndices = allItems
+          .filter(item => item.zIndex > selectedShape.zIndex)
+          .map(item => item.zIndex);
+        
+        if (higherZIndices.length === 0) {
+          // 더 높은 zIndex가 없으면 최대값 + 1
+          const maxShapeZIndex = prevShapes.length > 0 ? Math.max(...prevShapes.map(s => s.zIndex)) : 0;
+          const maxTextZIndex = texts.length > 0 ? Math.max(...texts.map(t => t.zIndex)) : 0;
+          const maxZIndex = Math.max(maxShapeZIndex, maxTextZIndex);
+          const updatedShape = { ...selectedShape, zIndex: maxZIndex + 1 };
+          const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+          setSelectedShape(updatedShape);
           return newShapes;
+        } else {
+          // 가장 작은 더 높은 zIndex로 교환
+          const targetZIndex = Math.min(...higherZIndices);
+          const targetShape = prevShapes.find(s => s.zIndex === targetZIndex);
+          const targetText = texts.find(t => t.zIndex === targetZIndex);
+          
+          if (targetShape) {
+            const updatedSelected = { ...selectedShape, zIndex: targetZIndex };
+            const updatedTarget = { ...targetShape, zIndex: selectedShape.zIndex };
+            const newShapes = prevShapes.map(s => 
+              s.id === selectedShape.id ? updatedSelected : 
+              s.id === targetShape.id ? updatedTarget : s
+            );
+            setSelectedShape(updatedSelected);
+            return newShapes;
+          } else if (targetText) {
+            const updatedShape = { ...selectedShape, zIndex: targetZIndex };
+            const updatedText = { ...targetText, zIndex: selectedShape.zIndex };
+            setTexts(texts.map(t => t.id === targetText.id ? updatedText : t));
+            setSelectedShape(updatedShape);
+            return prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+          }
         }
-      }
-      return prevShapes;
-    });
+        return prevShapes;
+      });
+    } else if (selectedText) {
+      setTexts(prevTexts => {
+        // 도형과 텍스트를 통합하여 현재 zIndex보다 큰 zIndex를 가진 요소들 중 가장 작은 값 찾기
+        const allItems = [
+          ...shapes,
+          ...prevTexts.filter(t => t.id !== selectedText.id)
+        ];
+        const higherZIndices = allItems
+          .filter(item => item.zIndex > selectedText.zIndex)
+          .map(item => item.zIndex);
+        
+        if (higherZIndices.length === 0) {
+          // 더 높은 zIndex가 없으면 최대값 + 1
+          const maxShapeZIndex = shapes.length > 0 ? Math.max(...shapes.map(s => s.zIndex)) : 0;
+          const maxTextZIndex = prevTexts.length > 0 ? Math.max(...prevTexts.map(t => t.zIndex)) : 0;
+          const maxZIndex = Math.max(maxShapeZIndex, maxTextZIndex);
+          const updatedText = { ...selectedText, zIndex: maxZIndex + 1 };
+          const newTexts = prevTexts.map(t => t.id === selectedText.id ? updatedText : t);
+          setSelectedText(updatedText);
+          return newTexts;
+        } else {
+          // 가장 작은 더 높은 zIndex로 교환
+          const targetZIndex = Math.min(...higherZIndices);
+          const targetShape = shapes.find(s => s.zIndex === targetZIndex);
+          const targetText = prevTexts.find(t => t.zIndex === targetZIndex);
+          
+          if (targetShape) {
+            const updatedText = { ...selectedText, zIndex: targetZIndex };
+            const updatedShape = { ...targetShape, zIndex: selectedText.zIndex };
+            setShapes(shapes.map(s => s.id === targetShape.id ? updatedShape : s));
+            setSelectedText(updatedText);
+            return prevTexts.map(t => t.id === selectedText.id ? updatedText : t);
+          } else if (targetText) {
+            const updatedSelected = { ...selectedText, zIndex: targetZIndex };
+            const updatedTarget = { ...targetText, zIndex: selectedText.zIndex };
+            const newTexts = prevTexts.map(t => 
+              t.id === selectedText.id ? updatedSelected : 
+              t.id === targetText.id ? updatedTarget : t
+            );
+            setSelectedText(updatedSelected);
+            return newTexts;
+          }
+        }
+        return prevTexts;
+      });
+    }
   };
 
   const sendBackward = () => {
-    if (!selectedShape) return;
-    setShapes(prevShapes => {
-      // 현재 zIndex보다 작은 zIndex를 가진 도형들 중 가장 큰 값 찾기 (최소 1)
-      const lowerZIndices = prevShapes
-        .filter(s => s.id !== selectedShape.id && s.zIndex < selectedShape.zIndex && s.zIndex >= 1)
-        .map(s => s.zIndex);
-      
-      if (lowerZIndices.length === 0) {
-        // 더 낮은 zIndex가 없으면 최소값 - 1 (하지만 최소 1)
-        const minZIndex = prevShapes.length > 0 ? Math.min(...prevShapes.map(s => s.zIndex)) : 1;
+    if (selectedShape) {
+      setShapes(prevShapes => {
+        // 도형과 텍스트를 통합하여 현재 zIndex보다 작은 zIndex를 가진 요소들 중 가장 큰 값 찾기 (최소 1)
+        const allItems = [
+          ...prevShapes.filter(s => s.id !== selectedShape.id),
+          ...texts
+        ];
+        const lowerZIndices = allItems
+          .filter(item => item.zIndex < selectedShape.zIndex && item.zIndex >= 1)
+          .map(item => item.zIndex);
+        
+        if (lowerZIndices.length === 0) {
+          // 더 낮은 zIndex가 없으면 최소값 - 1 (하지만 최소 1)
+          const minShapeZIndex = prevShapes.length > 0 ? Math.min(...prevShapes.map(s => s.zIndex)) : 1;
+          const minTextZIndex = texts.length > 0 ? Math.min(...texts.map(t => t.zIndex)) : 1;
+          const minZIndex = Math.min(minShapeZIndex, minTextZIndex);
+          const newZIndex = Math.max(1, minZIndex - 1);
+          const updatedShape = { ...selectedShape, zIndex: newZIndex };
+          const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+          setSelectedShape(updatedShape);
+          return newShapes;
+        } else {
+          // 가장 큰 더 낮은 zIndex로 교환
+          const targetZIndex = Math.max(...lowerZIndices);
+          const targetShape = prevShapes.find(s => s.zIndex === targetZIndex);
+          const targetText = texts.find(t => t.zIndex === targetZIndex);
+          
+          if (targetShape) {
+            const updatedSelected = { ...selectedShape, zIndex: targetZIndex };
+            const updatedTarget = { ...targetShape, zIndex: selectedShape.zIndex };
+            const newShapes = prevShapes.map(s => 
+              s.id === selectedShape.id ? updatedSelected : 
+              s.id === targetShape.id ? updatedTarget : s
+            );
+            setSelectedShape(updatedSelected);
+            return newShapes;
+          } else if (targetText) {
+            const updatedShape = { ...selectedShape, zIndex: targetZIndex };
+            const updatedText = { ...targetText, zIndex: selectedShape.zIndex };
+            setTexts(texts.map(t => t.id === targetText.id ? updatedText : t));
+            setSelectedShape(updatedShape);
+            return prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
+          }
+        }
+        return prevShapes;
+      });
+    } else if (selectedText) {
+      setTexts(prevTexts => {
+        // 도형과 텍스트를 통합하여 현재 zIndex보다 작은 zIndex를 가진 요소들 중 가장 큰 값 찾기 (최소 1)
+        const allItems = [
+          ...shapes,
+          ...prevTexts.filter(t => t.id !== selectedText.id)
+        ];
+        const lowerZIndices = allItems
+          .filter(item => item.zIndex < selectedText.zIndex && item.zIndex >= 1)
+          .map(item => item.zIndex);
+        
+        if (lowerZIndices.length === 0) {
+          // 더 낮은 zIndex가 없으면 최소값 - 1 (하지만 최소 1)
+          const minShapeZIndex = shapes.length > 0 ? Math.min(...shapes.map(s => s.zIndex)) : 1;
+          const minTextZIndex = prevTexts.length > 0 ? Math.min(...prevTexts.map(t => t.zIndex)) : 1;
+          const minZIndex = Math.min(minShapeZIndex, minTextZIndex);
+          const newZIndex = Math.max(1, minZIndex - 1);
+          const updatedText = { ...selectedText, zIndex: newZIndex };
+          const newTexts = prevTexts.map(t => t.id === selectedText.id ? updatedText : t);
+          setSelectedText(updatedText);
+          return newTexts;
+        } else {
+          // 가장 큰 더 낮은 zIndex로 교환
+          const targetZIndex = Math.max(...lowerZIndices);
+          const targetShape = shapes.find(s => s.zIndex === targetZIndex);
+          const targetText = prevTexts.find(t => t.zIndex === targetZIndex);
+          
+          if (targetShape) {
+            const updatedText = { ...selectedText, zIndex: targetZIndex };
+            const updatedShape = { ...targetShape, zIndex: selectedText.zIndex };
+            setShapes(shapes.map(s => s.id === targetShape.id ? updatedShape : s));
+            setSelectedText(updatedText);
+            return prevTexts.map(t => t.id === selectedText.id ? updatedText : t);
+          } else if (targetText) {
+            const updatedSelected = { ...selectedText, zIndex: targetZIndex };
+            const updatedTarget = { ...targetText, zIndex: selectedText.zIndex };
+            const newTexts = prevTexts.map(t => 
+              t.id === selectedText.id ? updatedSelected : 
+              t.id === targetText.id ? updatedTarget : t
+            );
+            setSelectedText(updatedSelected);
+            return newTexts;
+          }
+        }
+        return prevTexts;
+      });
+    }
+  };
+
+  const sendToBack = () => {
+    if (selectedShape) {
+      setShapes(prevShapes => {
+        // 도형과 텍스트를 통합하여 최소값 계산 (최소 1, 캔버스가 0)
+        const minShapeZIndex = prevShapes.length > 0 ? Math.min(...prevShapes.map(s => s.zIndex)) : 1;
+        const minTextZIndex = texts.length > 0 ? Math.min(...texts.map(t => t.zIndex)) : 1;
+        const minZIndex = Math.min(minShapeZIndex, minTextZIndex);
+        // 최소값이 1보다 작으면 1로, 그렇지 않으면 최소값 - 1 (하지만 최소 1)
         const newZIndex = Math.max(1, minZIndex - 1);
         const updatedShape = { ...selectedShape, zIndex: newZIndex };
         const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
         setSelectedShape(updatedShape);
         return newShapes;
-      } else {
-        // 가장 큰 더 낮은 zIndex로 교환
-        const targetZIndex = Math.max(...lowerZIndices);
-        const targetShape = prevShapes.find(s => s.zIndex === targetZIndex);
-        if (targetShape) {
-          const updatedSelected = { ...selectedShape, zIndex: targetZIndex };
-          const updatedTarget = { ...targetShape, zIndex: selectedShape.zIndex };
-          const newShapes = prevShapes.map(s => 
-            s.id === selectedShape.id ? updatedSelected : 
-            s.id === targetShape.id ? updatedTarget : s
-          );
-          setSelectedShape(updatedSelected);
-          return newShapes;
-        }
-      }
-      return prevShapes;
-    });
-  };
-
-  const sendToBack = () => {
-    if (!selectedShape) return;
-    setShapes(prevShapes => {
-      // 도형은 항상 캔버스 앞에 있어야 하므로 최소값은 1 (캔버스가 0)
-      const minZIndex = prevShapes.length > 0 ? Math.min(...prevShapes.map(s => s.zIndex)) : 1;
-      // 최소값이 1보다 작으면 1로, 그렇지 않으면 최소값 - 1 (하지만 최소 1)
-      const newZIndex = Math.max(1, minZIndex - 1);
-      const updatedShape = { ...selectedShape, zIndex: newZIndex };
-      const newShapes = prevShapes.map(s => s.id === selectedShape.id ? updatedShape : s);
-      setSelectedShape(updatedShape);
-      return newShapes;
-    });
+      });
+    } else if (selectedText) {
+      setTexts(prevTexts => {
+        // 도형과 텍스트를 통합하여 최소값 계산 (최소 1, 캔버스가 0)
+        const minShapeZIndex = shapes.length > 0 ? Math.min(...shapes.map(s => s.zIndex)) : 1;
+        const minTextZIndex = prevTexts.length > 0 ? Math.min(...prevTexts.map(t => t.zIndex)) : 1;
+        const minZIndex = Math.min(minShapeZIndex, minTextZIndex);
+        // 최소값이 1보다 작으면 1로, 그렇지 않으면 최소값 - 1 (하지만 최소 1)
+        const newZIndex = Math.max(1, minZIndex - 1);
+        const updatedText = { ...selectedText, zIndex: newZIndex };
+        const newTexts = prevTexts.map(t => t.id === selectedText.id ? updatedText : t);
+        setSelectedText(updatedText);
+        return newTexts;
+      });
+    }
   };
 
   const handleMouseDown = (e: React.MouseEvent, shape: Shape) => {
@@ -653,6 +918,7 @@ function App() {
     if (pendingShapeType) {
       return;
     }
+    
     const target = e.target as HTMLElement;
     
     // 리사이즈 핸들 클릭인지 확인
@@ -1364,7 +1630,12 @@ function App() {
                             // JPEG로 압축 (품질 0.8)
                             const compressedImageUrl = canvas.toDataURL('image/jpeg', 0.8);
                             
-                            const maxZIndex = shapes.length > 0 ? Math.max(...shapes.map(s => s.zIndex)) : 0;
+                            // 생성 순서에 따라 zIndex 설정: 모든 요소(도형+텍스트)를 id(생성 시간) 순으로 정렬하여 순차적으로 zIndex 할당
+                            const allItems = [
+                              ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
+                              ...texts.map(t => ({ id: t.id, type: 'text' as const }))
+                            ].sort((a, b) => a.id - b.id);
+                            
                             const newShape: Shape = {
                               id: Date.now(),
                               type: "image",
@@ -1373,7 +1644,7 @@ function App() {
                               width: Math.max(50, width),
                               height: Math.max(50, height),
                               color: DEFAULT_SHAPE_COLOR,
-                              zIndex: maxZIndex + 1,
+                              zIndex: allItems.length + 1, // 생성 순서에 따라 zIndex 할당
                               imageUrl: compressedImageUrl,
                             };
                             setShapes([...shapes, newShape]);
@@ -2008,6 +2279,99 @@ function App() {
                     }}
                     className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
                     title="Bring Forward"
+                    disabled={!selectedShape && !selectedText}
+                  >
+                    {/* 두 개의 겹쳐진 사각형 아이콘 */}
+                    <div className="relative w-5 h-5">
+                      <div className="absolute top-0 left-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 border border-white"></div>
+                    </div>
+                    <span>Bring Forward</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showBringForwardMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
+                      <button
+                        onClick={() => {
+                          bringForward();
+                          setShowBringForwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                      >
+                        Bring Forward
+                      </button>
+                      <button
+                        onClick={() => {
+                          bringToFront();
+                          setShowBringForwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
+                      >
+                        Bring to Front
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Send Backward 버튼 */}
+                <div className="relative" ref={sendBackwardMenuRef}>
+                  <button 
+                    onClick={() => {
+                      setShowSendBackwardMenu(!showSendBackwardMenu);
+                    }}
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                    title="Send Backward"
+                    disabled={!selectedShape && !selectedText}
+                  >
+                    {/* 두 개의 겹쳐진 사각형 아이콘 */}
+                    <div className="relative w-5 h-5">
+                      <div className="absolute top-0 left-0 w-3 h-3 border border-white"></div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 border border-pink-300 bg-pink-300/30"></div>
+                    </div>
+                    <span>Send Backward</span>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showSendBackwardMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-black dark:bg-black border border-pink-300/20 dark:border-pink-300/20 rounded shadow-lg z-10 min-w-[160px]">
+                      <button
+                        onClick={() => {
+                          sendBackward();
+                          setShowSendBackwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                      >
+                        Send Backward
+                      </button>
+                      <button
+                        onClick={() => {
+                          sendToBack();
+                          setShowSendBackwardMenu(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border-t border-pink-300/20"
+                      >
+                        Send to Back
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          {/* 텍스트 선택 시 z-index 조정 버튼들 */}
+          {selectedText && !selectedShape && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                {/* Bring Forward 버튼 */}
+                <div className="relative" ref={bringForwardMenuRef}>
+                  <button 
+                    onClick={() => {
+                      setShowBringForwardMenu(!showBringForwardMenu);
+                    }}
+                    className="px-3 py-1 bg-black dark:bg-black rounded text-sm text-white hover:bg-gray-800 dark:hover:bg-gray-800 border border-pink-300/20 flex items-center gap-2"
+                    title="Bring Forward"
                   >
                     {/* 두 개의 겹쳐진 사각형 아이콘 */}
                     <div className="relative w-5 h-5">
@@ -2393,7 +2757,7 @@ function App() {
               );
             })}
             {/* 텍스트 렌더링 */}
-            {texts.map((text) => {
+            {[...texts].sort((a, b) => a.zIndex - b.zIndex).map((text) => {
               const isSelected = selectedText?.id === text.id;
               const isEditing = editingTextId === text.id;
               
@@ -2438,6 +2802,7 @@ function App() {
                     wordWrap: "break-word",
                     overflow: "hidden",
                     boxSizing: "border-box",
+                    zIndex: text.zIndex,
                   }}
                 >
                   {text.text}

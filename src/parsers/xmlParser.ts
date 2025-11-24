@@ -59,7 +59,7 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
     }
     
     // Text 파싱
-    const textRegex = /<text id="(\d+)">\s*<position x="(\d+)" y="(\d+)" \/>\s*<size width="(\d+)" height="(\d+)" \/>\s*<content>([^<]*)<\/content>\s*<style fontSize="(\d+)" color="([^"]+)" fontFamily="([^"]+)" fontWeight="([^"]+)" fontStyle="([^"]+)" textAlign="([^"]+)" \/>\s*<\/text>/g;
+    const textRegex = /<text id="(\d+)">\s*<position x="(\d+)" y="(\d+)" \/>\s*<size width="(\d+)" height="(\d+)" \/>\s*<content>([^<]*)<\/content>\s*<style fontSize="(\d+)" color="([^"]+)" fontFamily="([^"]+)" fontWeight="([^"]+)" fontStyle="([^"]+)" textAlign="([^"]+)"(?: zIndex="(\d+)")? \/>\s*<\/text>/g;
     
     while ((match = textRegex.exec(xml)) !== null) {
       const id = parseInt(match[1]);
@@ -74,6 +74,7 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
       const fontWeight = match[10] as "normal" | "bold";
       const fontStyle = match[11] as "normal" | "italic";
       const textAlign = match[12] as "left" | "center" | "right";
+      const zIndex = match[13] ? parseInt(match[13]) : 0;
       
       parsedTexts.push({
         id,
@@ -88,6 +89,7 @@ export const parseXML = (xml: string): { shapes: Shape[]; texts: Text[] } => {
         fontWeight,
         fontStyle,
         textAlign,
+        zIndex,
       });
     }
     
