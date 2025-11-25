@@ -21,7 +21,7 @@ import alignCenterIcon from "./assets/align_center.png";
 import alignRightIcon from "./assets/align_right.png";
 
 // Types
-import { Shape, Text, FileItem } from './types';
+import { Shape, Text, FileItem, Group } from './types';
 import { ShapeType } from './types';
 
 // Constants
@@ -89,6 +89,13 @@ function App() {
   const [copiedText, setCopiedText] = useState<Text | null>(null);
   const [lastPastedPosition, setLastPastedPosition] = useState<{ x: number; y: number } | null>(null);
   const [pasteCount, setPasteCount] = useState(0);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [selectedShapeIds, setSelectedShapeIds] = useState<Set<number>>(new Set());
+  const [selectedTextIds, setSelectedTextIds] = useState<Set<number>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [groupDragStart, setGroupDragStart] = useState<{ groupX: number; groupY: number; shapePositions: Map<number, { x: number; y: number }>; textPositions: Map<number, { x: number; y: number }> } | null>(null);
   const textInputRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -345,6 +352,17 @@ function App() {
         }
       }
       
+      // 그룹 삭제
+      if (selectedGroup && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        // 그룹에 속한 모든 도형과 텍스트 삭제
+        setShapes((prevShapes) => prevShapes.filter((shape) => !selectedGroup.shapeIds.includes(shape.id)));
+        setTexts((prevTexts) => prevTexts.filter((text) => !selectedGroup.textIds.includes(text.id)));
+        setGroups((prevGroups) => prevGroups.filter((g) => g.id !== selectedGroup.id));
+        setSelectedGroup(null);
+        return;
+      }
+      
       // 텍스트 삭제 (편집 모드가 아닐 때만)
       if (selectedText && !pendingText && !editingTextId && canvasRef.current) {
         if (event.key === "Delete" || event.key === "Backspace") {
@@ -368,6 +386,21 @@ function App() {
           setLastPastedPosition(null); // 복사 시 붙여넣기 위치 초기화
           setPasteCount(0);
         }
+      }
+      
+      // Ctrl+G: 그룹화 (최소 2개 이상 선택되어야 함)
+      if ((event.ctrlKey || event.metaKey) && event.key === "g" && !event.shiftKey) {
+        const totalSelected = selectedShapeIds.size + selectedTextIds.size;
+        if (totalSelected >= 2) {
+          event.preventDefault();
+          createGroup();
+        }
+      }
+      
+      // Ctrl+Shift+G: 그룹 해제
+      if ((event.ctrlKey || event.metaKey) && event.key === "G" && event.shiftKey) {
+        event.preventDefault();
+        ungroup();
       }
       
       // Ctrl+V: 붙여넣기
@@ -522,18 +555,15 @@ function App() {
     // 도형 추가 모드가 아닐 때만 도형 클릭 무시
     // 도형 추가 모드일 때는 도형 위에서도 드래그로 새 도형 생성 가능
     const target = e.target as HTMLElement;
-    if (!pendingShapeType && (target.closest(".resize-handle") || target.closest(".text-resize-handle") || target.closest(".shape-container") || target.closest(".text-container"))) {
-      return;
-    }
+    const isOnElement = target.closest(".resize-handle") || 
+                        target.closest(".text-resize-handle") || 
+                        target.closest(".shape-container") || 
+                        target.closest(".text-container") || 
+                        target.closest(".group-container");
+    
     // 리사이즈 핸들은 항상 무시 (도형 생성 모드가 아니어도)
     if (target.closest(".resize-handle") || target.closest(".text-resize-handle")) {
       return;
-    }
-    
-    // 도형 추가 모드가 아닐 때 바탕을 클릭하면 선택 해제
-    if (!pendingShapeType && !pendingText) {
-      setSelectedShape(null);
-      setSelectedText(null);
     }
     
     // 도형 추가 모드일 때 드래그 시작
@@ -545,6 +575,34 @@ function App() {
       setIsDrawing(true);
       setDrawStart({ x, y });
       setDrawPreview({ x, y, width: 0, height: 0 });
+      return;
+    }
+    
+    // 요소 위에 있으면 올가미 선택 시작하지 않음
+    if (isOnElement && !pendingShapeType) {
+      return;
+    }
+    
+    // 도형 추가 모드가 아닐 때 바탕을 클릭하면 선택 해제
+    if (!pendingShapeType && !pendingText) {
+      // Ctrl 키를 누르지 않았을 때만 선택 해제 (Ctrl 키를 누르면 기존 선택 유지)
+      if (!e.ctrlKey && !e.metaKey) {
+        setSelectedShape(null);
+        setSelectedText(null);
+        setSelectedGroup(null);
+        setSelectedShapeIds(new Set());
+        setSelectedTextIds(new Set());
+      }
+    }
+    
+    // 올가미 선택 모드 시작 (빈 공간에서 드래그)
+    if (!pendingShapeType && !pendingText && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      setIsSelecting(true);
+      setSelectionBox({ x, y, width: 0, height: 0 });
     }
   };
 
@@ -594,6 +652,57 @@ function App() {
       setIsDrawing(false);
       setDrawPreview(null);
       setPendingShapeType(null);
+    } else if (isSelecting && selectionBox && canvasRef.current) {
+      // 올가미 선택 완료: 선택 박스 안에 포함된 요소들 선택
+      const box = selectionBox;
+      const minX = Math.min(box.x, box.x + box.width);
+      const maxX = Math.max(box.x, box.x + box.width);
+      const minY = Math.min(box.y, box.y + box.height);
+      const maxY = Math.max(box.y, box.y + box.height);
+      
+      const newSelectedShapeIds = new Set<number>();
+      const newSelectedTextIds = new Set<number>();
+      
+      // 모든 도형들 중 선택 박스와 겹치는 것 선택 (그룹에 속한 것도 포함)
+      shapes.forEach(shape => {
+        const shapeRight = shape.x + shape.width;
+        const shapeBottom = shape.y + shape.height;
+        // 요소가 선택 박스와 겹치는지 확인 (부분 겹침도 포함)
+        if (shape.x < maxX && shapeRight > minX && shape.y < maxY && shapeBottom > minY) {
+          newSelectedShapeIds.add(shape.id);
+        }
+      });
+      
+      // 모든 텍스트들 중 선택 박스와 겹치는 것 선택 (그룹에 속한 것도 포함)
+      texts.forEach(text => {
+        const textRight = text.x + text.width;
+        const textBottom = text.y + text.height;
+        // 요소가 선택 박스와 겹치는지 확인 (부분 겹침도 포함)
+        if (text.x < maxX && textRight > minX && text.y < maxY && textBottom > minY) {
+          newSelectedTextIds.add(text.id);
+        }
+      });
+      
+      // Ctrl 키를 누르지 않았을 때만 기존 선택을 대체
+      if (!e.ctrlKey && !e.metaKey) {
+        setSelectedShapeIds(newSelectedShapeIds);
+        setSelectedTextIds(newSelectedTextIds);
+        setSelectedShape(null);
+        setSelectedText(null);
+        setSelectedGroup(null);
+      } else {
+        // Ctrl 키를 누르면 기존 선택에 추가
+        const combinedShapeIds = new Set([...selectedShapeIds, ...newSelectedShapeIds]);
+        const combinedTextIds = new Set([...selectedTextIds, ...newSelectedTextIds]);
+        setSelectedShapeIds(combinedShapeIds);
+        setSelectedTextIds(combinedTextIds);
+        setSelectedShape(null);
+        setSelectedText(null);
+        setSelectedGroup(null);
+      }
+      
+      setIsSelecting(false);
+      setSelectionBox(null);
     }
     
     // 기존 마우스 업 핸들러도 호출
@@ -920,6 +1029,91 @@ function App() {
     }
   };
 
+  // 그룹 바운딩 박스 업데이트 함수
+  const updateGroupBounds = (group: Group) => {
+    const groupShapes = shapes.filter(s => group.shapeIds.includes(s.id));
+    const groupTexts = texts.filter(t => group.textIds.includes(t.id));
+    
+    if (groupShapes.length === 0 && groupTexts.length === 0) {
+      return group;
+    }
+    
+    const allItems = [...groupShapes, ...groupTexts];
+    const minX = Math.min(...allItems.map(item => item.x));
+    const minY = Math.min(...allItems.map(item => item.y));
+    const maxX = Math.max(...allItems.map(item => item.x + item.width));
+    const maxY = Math.max(...allItems.map(item => item.y + item.height));
+    
+    return {
+      ...group,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  };
+  
+  // 그룹 생성 함수
+  const createGroup = () => {
+    // 최소 2개 이상 선택되어야 그룹화 가능
+    const totalSelected = selectedShapeIds.size + selectedTextIds.size;
+    if (totalSelected < 2) {
+      return;
+    }
+    
+    // 선택된 요소들의 바운딩 박스 계산
+    const selectedShapes = shapes.filter(s => selectedShapeIds.has(s.id));
+    const selectedTexts = texts.filter(t => selectedTextIds.has(t.id));
+    
+    if (selectedShapes.length === 0 && selectedTexts.length === 0) {
+      return;
+    }
+    
+    const allItems = [...selectedShapes, ...selectedTexts];
+    const minX = Math.min(...allItems.map(item => item.x));
+    const minY = Math.min(...allItems.map(item => item.y));
+    const maxX = Math.max(...allItems.map(item => item.x + item.width));
+    const maxY = Math.max(...allItems.map(item => item.y + item.height));
+    
+    // 생성 순서에 따라 zIndex 설정
+    const allGroupItems = [
+      ...groups.map(g => ({ id: g.id, type: 'group' as const })),
+      ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
+      ...texts.map(t => ({ id: t.id, type: 'text' as const }))
+    ].sort((a, b) => a.id - b.id);
+    
+    const newGroup: Group = {
+      id: Date.now(),
+      shapeIds: Array.from(selectedShapeIds),
+      textIds: Array.from(selectedTextIds),
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      zIndex: allGroupItems.length + 1,
+    };
+    
+    setGroups([...groups, newGroup]);
+    setSelectedGroup(newGroup);
+    setSelectedShape(null);
+    setSelectedText(null);
+    setSelectedShapeIds(new Set());
+    setSelectedTextIds(new Set());
+  };
+  
+  // 그룹 해제 함수
+  const ungroup = () => {
+    if (!selectedGroup) return;
+    
+    // 그룹 해제: 그룹 삭제하고 요소들은 그대로 유지
+    setGroups(groups.filter(g => g.id !== selectedGroup.id));
+    setSelectedGroup(null);
+    setSelectedShape(null);
+    setSelectedText(null);
+    setSelectedShapeIds(new Set());
+    setSelectedTextIds(new Set());
+  };
+  
   const handleMouseDown = (e: React.MouseEvent, shape: Shape) => {
     // 도형 추가 모드일 때는 이벤트를 캔버스까지 전파하여 도형 생성 가능하도록 함
     if (pendingShapeType) {
@@ -935,8 +1129,48 @@ function App() {
     
     const target = e.target as HTMLElement;
     
-    // 리사이즈 핸들 클릭인지 확인
-    if (target.classList.contains("resize-handle")) {
+    // 그룹에 속한 도형인지 확인
+    const group = groups.find(g => g.shapeIds.includes(shape.id));
+    
+    // 그룹에 속한 도형은 리사이즈 불가
+    if (group && target.classList.contains("resize-handle")) {
+      // 그룹에 속한 도형 클릭 시 그룹만 선택
+      const updatedGroup = updateGroupBounds(group);
+      setSelectedGroup(updatedGroup);
+      setSelectedShape(null);
+      setSelectedText(null);
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left - updatedGroup.x;
+        const offsetY = e.clientY - rect.top - updatedGroup.y;
+        setDragOffset({ x: offsetX, y: offsetY });
+        setIsDragging(true);
+        
+        // 그룹 드래그 시작 시 초기 위치 저장 (상대 위치 유지를 위해)
+        const shapePositions = new Map<number, { x: number; y: number }>();
+        const textPositions = new Map<number, { x: number; y: number }>();
+        shapes.forEach(shape => {
+          if (updatedGroup.shapeIds.includes(shape.id)) {
+            shapePositions.set(shape.id, { x: shape.x, y: shape.y });
+          }
+        });
+        texts.forEach(text => {
+          if (updatedGroup.textIds.includes(text.id)) {
+            textPositions.set(text.id, { x: text.x, y: text.y });
+          }
+        });
+        setGroupDragStart({
+          groupX: updatedGroup.x,
+          groupY: updatedGroup.y,
+          shapePositions,
+          textPositions,
+        });
+      }
+      return;
+    }
+    
+    // 리사이즈 핸들 클릭인지 확인 (그룹에 속하지 않은 도형만)
+    if (target.classList.contains("resize-handle") && !group) {
       const handle = target.getAttribute("data-handle");
       if (handle && canvasRef.current) {
         setIsResizing(true);
@@ -962,8 +1196,71 @@ function App() {
       }
       return;
     }
-
-    setSelectedShape(shape);
+    
+    if (group && !e.ctrlKey && !e.metaKey) {
+      // 그룹에 속한 도형 클릭 시 그룹만 선택 (개별 요소는 선택/드래그 불가)
+      e.stopPropagation();
+      const updatedGroup = updateGroupBounds(group);
+      setSelectedGroup(updatedGroup);
+      setSelectedShape(null);
+      setSelectedText(null);
+      setSelectedShapeIds(new Set());
+      setSelectedTextIds(new Set());
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left - updatedGroup.x;
+        const offsetY = e.clientY - rect.top - updatedGroup.y;
+        setDragOffset({ x: offsetX, y: offsetY });
+        setIsDragging(true);
+        
+        // 그룹 드래그 시작 시 초기 위치 저장 (상대 위치 유지를 위해)
+        const shapePositions = new Map<number, { x: number; y: number }>();
+        const textPositions = new Map<number, { x: number; y: number }>();
+        shapes.forEach(shape => {
+          if (updatedGroup.shapeIds.includes(shape.id)) {
+            shapePositions.set(shape.id, { x: shape.x, y: shape.y });
+          }
+        });
+        texts.forEach(text => {
+          if (updatedGroup.textIds.includes(text.id)) {
+            textPositions.set(text.id, { x: text.x, y: text.y });
+          }
+        });
+        setGroupDragStart({
+          groupX: updatedGroup.x,
+          groupY: updatedGroup.y,
+          shapePositions,
+          textPositions,
+        });
+      }
+      return;
+    }
+    
+    // Ctrl+클릭: 다중 선택 (그룹에 속하지 않은 요소만)
+    if (e.ctrlKey || e.metaKey) {
+      if (!group) {
+        const newSelectedShapeIds = new Set(selectedShapeIds);
+        if (newSelectedShapeIds.has(shape.id)) {
+          newSelectedShapeIds.delete(shape.id);
+        } else {
+          newSelectedShapeIds.add(shape.id);
+        }
+        setSelectedShapeIds(newSelectedShapeIds);
+        setSelectedShape(null);
+        setSelectedText(null);
+        setSelectedGroup(null);
+      }
+    } else {
+      // 일반 클릭: 단일 선택 (그룹에 속하지 않은 요소만)
+      if (!group) {
+        setSelectedShape(shape);
+        setSelectedShapeIds(new Set([shape.id]));
+        setSelectedTextIds(new Set());
+        setSelectedText(null);
+        setSelectedGroup(null);
+      }
+    }
+    
     setShapeColor(shape.color);
     setShapeWidth(shape.width);
     setShapeHeight(shape.height);
@@ -974,7 +1271,8 @@ function App() {
     setBorderRadiusInputValue(borderRadius.toString());
     setPendingShapeType(null); // 도형 선택 시 추가 모드 해제
 
-    if (canvasRef.current) {
+    // 그룹에 속하지 않은 도형만 드래그 가능
+    if (!group && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const offsetX = e.clientX - rect.left - shape.x;
       const offsetY = e.clientY - rect.top - shape.y;
@@ -999,8 +1297,48 @@ function App() {
     
     const target = e.target as HTMLElement;
     
-    // 리사이즈 핸들 클릭인지 확인
-    if (target.classList.contains("text-resize-handle")) {
+    // 그룹에 속한 텍스트인지 확인
+    const group = groups.find(g => g.textIds.includes(text.id));
+    
+    // 그룹에 속한 텍스트는 리사이즈 불가
+    if (group && target.classList.contains("text-resize-handle")) {
+      // 그룹에 속한 텍스트 클릭 시 그룹만 선택
+      const updatedGroup = updateGroupBounds(group);
+      setSelectedGroup(updatedGroup);
+      setSelectedText(null);
+      setSelectedShape(null);
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left - updatedGroup.x;
+        const offsetY = e.clientY - rect.top - updatedGroup.y;
+        setTextDragOffset({ x: offsetX, y: offsetY });
+        setIsDraggingText(true);
+        
+        // 그룹 드래그 시작 시 초기 위치 저장 (상대 위치 유지를 위해)
+        const shapePositions = new Map<number, { x: number; y: number }>();
+        const textPositions = new Map<number, { x: number; y: number }>();
+        shapes.forEach(shape => {
+          if (updatedGroup.shapeIds.includes(shape.id)) {
+            shapePositions.set(shape.id, { x: shape.x, y: shape.y });
+          }
+        });
+        texts.forEach(text => {
+          if (updatedGroup.textIds.includes(text.id)) {
+            textPositions.set(text.id, { x: text.x, y: text.y });
+          }
+        });
+        setGroupDragStart({
+          groupX: updatedGroup.x,
+          groupY: updatedGroup.y,
+          shapePositions,
+          textPositions,
+        });
+      }
+      return;
+    }
+    
+    // 리사이즈 핸들 클릭인지 확인 (그룹에 속하지 않은 텍스트만)
+    if (target.classList.contains("text-resize-handle") && !group) {
       const handle = target.getAttribute("data-handle");
       if (handle && canvasRef.current) {
         setIsResizingText(true);
@@ -1019,13 +1357,75 @@ function App() {
       return;
     }
     
-    setSelectedText(text);
-    setSelectedShape(null);
+    if (group && !e.ctrlKey && !e.metaKey) {
+      // 그룹에 속한 텍스트 클릭 시 그룹만 선택 (개별 요소는 선택/드래그 불가)
+      e.stopPropagation();
+      const updatedGroup = updateGroupBounds(group);
+      setSelectedGroup(updatedGroup);
+      setSelectedText(null);
+      setSelectedShape(null);
+      setSelectedShapeIds(new Set());
+      setSelectedTextIds(new Set());
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left - updatedGroup.x;
+        const offsetY = e.clientY - rect.top - updatedGroup.y;
+        setTextDragOffset({ x: offsetX, y: offsetY });
+        setIsDraggingText(true);
+        
+        // 그룹 드래그 시작 시 초기 위치 저장 (상대 위치 유지를 위해)
+        const shapePositions = new Map<number, { x: number; y: number }>();
+        const textPositions = new Map<number, { x: number; y: number }>();
+        shapes.forEach(shape => {
+          if (updatedGroup.shapeIds.includes(shape.id)) {
+            shapePositions.set(shape.id, { x: shape.x, y: shape.y });
+          }
+        });
+        texts.forEach(text => {
+          if (updatedGroup.textIds.includes(text.id)) {
+            textPositions.set(text.id, { x: text.x, y: text.y });
+          }
+        });
+        setGroupDragStart({
+          groupX: updatedGroup.x,
+          groupY: updatedGroup.y,
+          shapePositions,
+          textPositions,
+        });
+      }
+      return;
+    }
+    
+    // Ctrl+클릭: 다중 선택 (그룹에 속하지 않은 요소만)
+    if (e.ctrlKey || e.metaKey) {
+      if (!group) {
+        const newSelectedTextIds = new Set(selectedTextIds);
+        if (newSelectedTextIds.has(text.id)) {
+          newSelectedTextIds.delete(text.id);
+        } else {
+          newSelectedTextIds.add(text.id);
+        }
+        setSelectedTextIds(newSelectedTextIds);
+        setSelectedText(null);
+        setSelectedShape(null);
+        setSelectedGroup(null);
+      }
+    } else {
+      // 일반 클릭: 단일 선택 (그룹에 속하지 않은 요소만)
+      if (!group) {
+        setSelectedText(text);
+        setSelectedTextIds(new Set([text.id]));
+        setSelectedShapeIds(new Set());
+        setSelectedShape(null);
+        setSelectedGroup(null);
+      }
+    }
+    
     setPendingShapeType(null);
     setPendingText(false);
     
-    // 더블클릭이면 편집 모드로 전환하지 않고 드래그 시작
-    if (e.detail === 1) {
+    // 더블클릭이면 편집 모드로 전환하지 않고 드래그 시작 (그룹에 속하지 않은 텍스트만)
+    if (e.detail === 1 && !group) {
       // 단일 클릭: 드래그 준비
       if (canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
@@ -1174,6 +1574,12 @@ function App() {
         return;
       }
       
+      // 그룹에 속한 텍스트는 리사이즈 불가
+      const group = groups.find(g => g.textIds.includes(selectedText.id));
+      if (group) {
+        return;
+      }
+      
       const rect = canvasRef.current.getBoundingClientRect();
       const deltaX = e.clientX - textResizeStart.x;
       const deltaY = e.clientY - textResizeStart.y;
@@ -1241,10 +1647,84 @@ function App() {
       return;
     }
     
+    // 그룹 드래그 처리 (텍스트 드래그로 처리)
+    if (isDraggingText && selectedGroup && canvasRef.current && groupDragStart) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const newGroupX = e.clientX - rect.left - textDragOffset.x;
+      const newGroupY = e.clientY - rect.top - textDragOffset.y;
+      
+      // 그룹의 이동 거리 계산
+      let deltaX = newGroupX - groupDragStart.groupX;
+      let deltaY = newGroupY - groupDragStart.groupY;
+      
+      // 그룹 바운딩 박스를 기준으로 경계 체크 (그룹 전체가 경계 내에 있도록)
+      const minGroupX = groupDragStart.groupX + deltaX;
+      const minGroupY = groupDragStart.groupY + deltaY;
+      const maxGroupX = minGroupX + selectedGroup.width;
+      const maxGroupY = minGroupY + selectedGroup.height;
+      
+      // 경계를 벗어나면 delta 조정 (그룹 전체가 경계 내에 있도록)
+      if (minGroupX < 0) {
+        deltaX = -groupDragStart.groupX;
+      } else if (maxGroupX > rect.width) {
+        deltaX = rect.width - groupDragStart.groupX - selectedGroup.width;
+      }
+      
+      if (minGroupY < 0) {
+        deltaY = -groupDragStart.groupY;
+      } else if (maxGroupY > rect.height) {
+        deltaY = rect.height - groupDragStart.groupY - selectedGroup.height;
+      }
+      
+      // 그룹 내 모든 도형 이동 (초기 위치 기준으로 상대 위치 유지, 같은 delta만큼 이동)
+      const updatedShapes = shapes.map(shape => {
+        if (selectedGroup.shapeIds.includes(shape.id)) {
+          const initialPos = groupDragStart.shapePositions.get(shape.id);
+          if (initialPos) {
+            return { ...shape, x: initialPos.x + deltaX, y: initialPos.y + deltaY };
+          }
+        }
+        return shape;
+      });
+      
+      // 그룹 내 모든 텍스트 이동 (초기 위치 기준으로 상대 위치 유지, 같은 delta만큼 이동)
+      const updatedTexts = texts.map(text => {
+        if (selectedGroup.textIds.includes(text.id)) {
+          const initialPos = groupDragStart.textPositions.get(text.id);
+          if (initialPos) {
+            return { ...text, x: initialPos.x + deltaX, y: initialPos.y + deltaY };
+          }
+        }
+        return text;
+      });
+      
+      // 그룹 위치 업데이트
+      const updatedGroup = {
+        ...selectedGroup,
+        x: groupDragStart.groupX + deltaX,
+        y: groupDragStart.groupY + deltaY,
+      };
+      
+      // 그룹 바운딩 박스 업데이트
+      const finalGroup = updateGroupBounds(updatedGroup);
+      
+      setShapes(updatedShapes);
+      setTexts(updatedTexts);
+      setGroups(groups.map(g => g.id === selectedGroup.id ? finalGroup : g));
+      setSelectedGroup(finalGroup);
+      return;
+    }
+    
     // 편집 모드가 아닐 때만 텍스트 드래그 처리
     if (isDraggingText && selectedText && canvasRef.current && editingTextId !== selectedText.id) {
       // 잠금된 텍스트는 드래그 불가능
       if (selectedText.locked) {
+        return;
+      }
+      
+      // 그룹에 속한 텍스트는 개별 드래그 불가
+      const group = groups.find(g => g.textIds.includes(selectedText.id));
+      if (group) {
         return;
       }
       
@@ -1260,6 +1740,21 @@ function App() {
       
       setTexts(texts.map((t) => (t.id === selectedText.id ? updatedText : t)));
       setSelectedText(updatedText);
+      return;
+    }
+    
+    // 올가미 선택 중일 때
+    if (isSelecting && selectionBox && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      
+      const x = Math.min(selectionBox.x, currentX);
+      const y = Math.min(selectionBox.y, currentY);
+      const width = Math.abs(currentX - selectionBox.x);
+      const height = Math.abs(currentY - selectionBox.y);
+      
+      setSelectionBox({ x, y, width, height });
       return;
     }
     
@@ -1281,6 +1776,12 @@ function App() {
     if (isResizing && selectedShape && resizeHandle && canvasRef.current) {
       // 잠금된 도형은 리사이즈 불가능
       if (selectedShape.locked) {
+        return;
+      }
+      
+      // 그룹에 속한 도형은 리사이즈 불가
+      const group = groups.find(g => g.shapeIds.includes(selectedShape.id));
+      if (group) {
         return;
       }
       
@@ -1357,9 +1858,81 @@ function App() {
         )
       );
       setSelectedShape(updatedShape);
+    } else if (isDragging && selectedGroup && canvasRef.current && groupDragStart) {
+      // 그룹 드래그: 그룹 내 모든 요소를 함께 이동 (상대 위치 유지)
+      const rect = canvasRef.current.getBoundingClientRect();
+      const newGroupX = e.clientX - rect.left - dragOffset.x;
+      const newGroupY = e.clientY - rect.top - dragOffset.y;
+      
+      // 그룹의 이동 거리 계산
+      let deltaX = newGroupX - groupDragStart.groupX;
+      let deltaY = newGroupY - groupDragStart.groupY;
+      
+      // 그룹 바운딩 박스를 기준으로 경계 체크 (그룹 전체가 경계 내에 있도록)
+      const minGroupX = groupDragStart.groupX + deltaX;
+      const minGroupY = groupDragStart.groupY + deltaY;
+      const maxGroupX = minGroupX + selectedGroup.width;
+      const maxGroupY = minGroupY + selectedGroup.height;
+      
+      // 경계를 벗어나면 delta 조정 (그룹 전체가 경계 내에 있도록)
+      if (minGroupX < 0) {
+        deltaX = -groupDragStart.groupX;
+      } else if (maxGroupX > rect.width) {
+        deltaX = rect.width - groupDragStart.groupX - selectedGroup.width;
+      }
+      
+      if (minGroupY < 0) {
+        deltaY = -groupDragStart.groupY;
+      } else if (maxGroupY > rect.height) {
+        deltaY = rect.height - groupDragStart.groupY - selectedGroup.height;
+      }
+      
+      // 그룹 내 모든 도형 이동 (초기 위치 기준으로 상대 위치 유지, 같은 delta만큼 이동)
+      const updatedShapes = shapes.map(shape => {
+        if (selectedGroup.shapeIds.includes(shape.id)) {
+          const initialPos = groupDragStart.shapePositions.get(shape.id);
+          if (initialPos) {
+            return { ...shape, x: initialPos.x + deltaX, y: initialPos.y + deltaY };
+          }
+        }
+        return shape;
+      });
+      
+      // 그룹 내 모든 텍스트 이동 (초기 위치 기준으로 상대 위치 유지, 같은 delta만큼 이동)
+      const updatedTexts = texts.map(text => {
+        if (selectedGroup.textIds.includes(text.id)) {
+          const initialPos = groupDragStart.textPositions.get(text.id);
+          if (initialPos) {
+            return { ...text, x: initialPos.x + deltaX, y: initialPos.y + deltaY };
+          }
+        }
+        return text;
+      });
+      
+      // 그룹 위치 업데이트
+      const updatedGroup = {
+        ...selectedGroup,
+        x: groupDragStart.groupX + deltaX,
+        y: groupDragStart.groupY + deltaY,
+      };
+      
+      // 그룹 바운딩 박스 업데이트
+      const finalGroup = updateGroupBounds(updatedGroup);
+      
+      setShapes(updatedShapes);
+      setTexts(updatedTexts);
+      setGroups(groups.map(g => g.id === selectedGroup.id ? finalGroup : g));
+      setSelectedGroup(finalGroup);
+      return;
     } else if (isDragging && selectedShape && canvasRef.current) {
       // 잠금된 도형은 드래그 불가능
       if (selectedShape.locked) {
+        return;
+      }
+      
+      // 그룹에 속한 도형은 개별 드래그 불가
+      const group = groups.find(g => g.shapeIds.includes(selectedShape.id));
+      if (group) {
         return;
       }
       
@@ -1398,6 +1971,7 @@ function App() {
     setIsResizingText(false);
     setResizeHandle(null);
     setTextResizeHandle(null);
+    setGroupDragStart(null);
   };
 
   return (
@@ -2471,6 +3045,39 @@ function App() {
                 )}
               </div>
             </div>
+            {/* 네 번째 줄: 그룹화 버튼들 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={createGroup}
+                disabled={selectedShapeIds.size + selectedTextIds.size < 2}
+                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                  selectedShapeIds.size + selectedTextIds.size < 2
+                    ? "opacity-50 cursor-not-allowed text-gray-500"
+                    : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                }`}
+                title="Group (Ctrl+G) - 최소 2개 이상 선택 필요"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span>Group</span>
+              </button>
+              <button
+                onClick={ungroup}
+                disabled={!selectedGroup}
+                className={`px-3 py-1 bg-black dark:bg-black rounded text-sm border border-pink-300/20 flex items-center gap-2 ${
+                  !selectedGroup
+                    ? "opacity-50 cursor-not-allowed text-gray-500"
+                    : "text-white hover:bg-gray-800 dark:hover:bg-gray-800"
+                }`}
+                title="Ungroup (Ctrl+Shift+G)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                <span>Ungroup</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2490,6 +3097,22 @@ function App() {
               handleMouseUp();
             }}
           >
+            {/* 올가미 선택 박스 */}
+            {selectionBox && isSelecting && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: `${selectionBox.x}px`,
+                  top: `${selectionBox.y}px`,
+                  width: `${selectionBox.width}px`,
+                  height: `${selectionBox.height}px`,
+                  border: "2px dashed #9ca3af",
+                  backgroundColor: "rgba(156, 163, 175, 0.1)",
+                  pointerEvents: "none",
+                  zIndex: 9998, // 모든 도형 위에 표시되도록 매우 높은 z-index 설정
+                }}
+              />
+            )}
             {/* 드래그 미리보기 */}
             {drawPreview && pendingShapeType && (
               <div
@@ -2521,6 +3144,8 @@ function App() {
             )}
             {[...shapes].sort((a, b) => a.zIndex - b.zIndex).map((shape) => {
               const isSelected = selectedShape?.id === shape.id;
+              const isMultiSelected = selectedShapeIds.has(shape.id);
+              const isInGroup = groups.some(g => g.shapeIds.includes(shape.id));
               return (
                 <div
                   key={shape.id}
@@ -2646,14 +3271,15 @@ function App() {
                     <div
                       style={{
                         ...getShapeStyle(shape),
-                        outline: isSelected ? (shape.locked ? "2px solid #ff6b6b" : "2px solid #f9a8d4") : "none",
-                        outlineOffset: isSelected ? (shape.strokeWidth && shape.strokeWidth > 0 ? `-${shape.strokeWidth + 2}px` : "-2px") : "0",
-                        cursor: shape.locked ? "not-allowed" : (isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab"),
+                        outline: (isSelected || isMultiSelected) ? (shape.locked ? "2px solid #ff6b6b" : "2px solid #f9a8d4") : "none",
+                        outlineOffset: (isSelected || isMultiSelected) ? (shape.strokeWidth && shape.strokeWidth > 0 ? `-${shape.strokeWidth + 2}px` : "-2px") : "0",
+                        cursor: shape.locked ? "not-allowed" : (isDragging && isSelected ? "grabbing" : (isSelected || isMultiSelected) ? "move" : "grab"),
                         userSelect: "none",
+                        opacity: isInGroup && !isSelected ? 0.8 : undefined,
                       }}
                     />
                   )}
-                  {isSelected && !shape.locked && (
+                  {(isSelected || isMultiSelected) && !shape.locked && (
                     <>
                       {/* 모서리 핸들 */}
                       <div
@@ -2801,10 +3427,73 @@ function App() {
                 </div>
               );
             })}
+            {/* 그룹 바운딩 박스 렌더링 */}
+            {[...groups].sort((a, b) => a.zIndex - b.zIndex).map((group) => {
+              const isSelected = selectedGroup?.id === group.id;
+              const updatedGroup = updateGroupBounds(group);
+              
+              return (
+                <div
+                  key={group.id}
+                  className="group-container"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (!e.ctrlKey && !e.metaKey) {
+                      setSelectedGroup(updatedGroup);
+                      setSelectedShape(null);
+                      setSelectedText(null);
+                      if (canvasRef.current) {
+                        const rect = canvasRef.current.getBoundingClientRect();
+                        const offsetX = e.clientX - rect.left - updatedGroup.x;
+                        const offsetY = e.clientY - rect.top - updatedGroup.y;
+                        setDragOffset({ x: offsetX, y: offsetY });
+                        setIsDragging(true);
+                        
+                        // 그룹 드래그 시작 시 초기 위치 저장 (상대 위치 유지를 위해)
+                        const shapePositions = new Map<number, { x: number; y: number }>();
+                        const textPositions = new Map<number, { x: number; y: number }>();
+                        shapes.forEach(shape => {
+                          if (updatedGroup.shapeIds.includes(shape.id)) {
+                            shapePositions.set(shape.id, { x: shape.x, y: shape.y });
+                          }
+                        });
+                        texts.forEach(text => {
+                          if (updatedGroup.textIds.includes(text.id)) {
+                            textPositions.set(text.id, { x: text.x, y: text.y });
+                          }
+                        });
+                        setGroupDragStart({
+                          groupX: updatedGroup.x,
+                          groupY: updatedGroup.y,
+                          shapePositions,
+                          textPositions,
+                        });
+                      }
+                    }
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: `${updatedGroup.x}px`,
+                    top: `${updatedGroup.y}px`,
+                    width: `${updatedGroup.width}px`,
+                    height: `${updatedGroup.height}px`,
+                    border: isSelected ? "2px dashed #f9a8d4" : "none",
+                    backgroundColor: isSelected ? "rgba(249, 168, 212, 0.1)" : "transparent",
+                    pointerEvents: isSelected ? "auto" : "none",
+                    zIndex: updatedGroup.zIndex,
+                    cursor: isSelected ? "move" : "default",
+                  }}
+                >
+                  {/* 그룹 내 도형과 텍스트는 이미 렌더링되므로 여기서는 바운딩 박스만 표시 */}
+                </div>
+              );
+            })}
             {/* 텍스트 렌더링 */}
             {[...texts].sort((a, b) => a.zIndex - b.zIndex).map((text) => {
               const isSelected = selectedText?.id === text.id;
+              const isMultiSelected = selectedTextIds.has(text.id);
               const isEditing = editingTextId === text.id;
+              const isInGroup = groups.some(g => g.textIds.includes(text.id));
               
               if (isEditing) {
                 return (
@@ -2837,21 +3526,22 @@ function App() {
                     fontWeight: text.fontWeight,
                     fontStyle: text.fontStyle,
                     textAlign: text.textAlign,
-                    cursor: text.locked ? "not-allowed" : (isDraggingText && isSelected ? "grabbing" : isSelected ? "move" : "grab"),
+                    cursor: text.locked ? "not-allowed" : (isDraggingText && isSelected ? "grabbing" : (isSelected || isMultiSelected) ? "move" : "grab"),
                     userSelect: "none",
-                    border: isSelected ? (text.locked ? "2px dashed #ff6b6b" : "2px dashed #f9a8d4") : "none",
-                    padding: isSelected ? "2px" : "0",
+                    border: (isSelected || isMultiSelected) ? (text.locked ? "2px dashed #ff6b6b" : "2px dashed #f9a8d4") : "none",
+                    padding: (isSelected || isMultiSelected) ? "2px" : "0",
                     borderRadius: "2px",
-                    backgroundColor: isSelected ? "rgba(249, 168, 212, 0.1)" : "transparent",
+                    backgroundColor: (isSelected || isMultiSelected) ? "rgba(249, 168, 212, 0.1)" : "transparent",
                     whiteSpace: "pre-wrap",
                     wordWrap: "break-word",
                     overflow: "hidden",
                     boxSizing: "border-box",
                     zIndex: text.zIndex,
+                    opacity: isInGroup && !isSelected ? 0.8 : undefined,
                   }}
                 >
                   {text.text}
-                  {isSelected && !text.locked && (
+                  {(isSelected || isMultiSelected) && !text.locked && (
                     <>
                       {/* 모서리 핸들 */}
                       {/* 모서리 핸들 */}
