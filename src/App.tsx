@@ -1,13 +1,6 @@
 
-import { useState, useRef, useEffect, useMemo } from "react";
-
-// @ts-ignore
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-// @ts-ignore
-import { dracula } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { useRef, useEffect } from "react";
 import "./App.css";
-import newfileIcon from "./assets/newfile.png";
-import newfolderIcon from "./assets/newfolder.png";
 import newimageIcon from "./assets/newimage.png";
 import newshapeIcon from "./assets/newshape.png";
 import newtextIcon from "./assets/newtext.png";
@@ -21,82 +14,186 @@ import alignCenterIcon from "./assets/align_center.png";
 import alignRightIcon from "./assets/align_right.png";
 
 // Types
-import { Shape, Text, FileItem, Group } from './types';
-import { ShapeType } from './types';
+import { Shape, Text, Group } from './types';
 
 // Constants
 import { DEFAULT_SHAPE_COLOR } from './constants/colors';
-import { DEFAULT_FILES } from './constants/files';
 
 // Utils
 import { isClipPathShape, isNonTrianglePolygon, getShapeStyle } from './utils/shapeUtils';
-import { getFileIcon } from './utils/fileUtils';
 
-// Generators
-import { generateXML, generateCSS, generateReact } from './generators';
-
-// Parsers
-import { parseXML, parseCSS, parseReact } from './parsers';
+// Hooks
+import { 
+  useShapes, 
+  useTexts, 
+  useCodeEditor, 
+  useFileManagement, 
+  useSelection, 
+  useGroups, 
+  useDragAndDrop, 
+  useResize 
+} from './hooks';
 
 // Components
 import EditableText from './components/EditableText';
+import FileExplorer from './components/FileExplorer';
+import FileTabs from './components/FileTabs';
+import CodeEditor from './components/CodeEditor';
 
 function App() {
-  const [shapes, setShapes] = useState<Shape[]>([]);
-  const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
-  const [shapeColor, setShapeColor] = useState(DEFAULT_SHAPE_COLOR);
-  const [shapeWidth, setShapeWidth] = useState(100);
-  const [shapeHeight, setShapeHeight] = useState(100);
-  const [_shapeX, setShapeX] = useState(50);
-  const [_shapeY, setShapeY] = useState(50);
-  const [shapeBorderRadius, setShapeBorderRadius] = useState(0);
-  const [borderRadiusInputValue, setBorderRadiusInputValue] = useState<string>("0");
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [pendingShapeType, setPendingShapeType] = useState<ShapeType | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, shapeX: 0, shapeY: 0 });
-  const [isResizingText, setIsResizingText] = useState(false);
-  const [textResizeHandle, setTextResizeHandle] = useState<string | null>(null);
-  const [textResizeStart, setTextResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, textX: 0, textY: 0 });
-  const [showShapeMenu, setShowShapeMenu] = useState(false);
-  const [showShapeColorMenu, setShowShapeColorMenu] = useState(false);
-  const [showTextColorMenu, setShowTextColorMenu] = useState(false);
-  const [showEffectsMenu, setShowEffectsMenu] = useState(false);
-  const [showOpacityControl, setShowOpacityControl] = useState(false);
-  const [showGlowControl, setShowGlowControl] = useState(false);
-  const [showStrokeMenu, setShowStrokeMenu] = useState(false);
-  const [textColor, setTextColor] = useState("#000000");
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
-  const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [codeView, setCodeView] = useState<"xml" | "css" | "react">("xml");
-  const [codeContent, setCodeContent] = useState<string>("");
-  const [isCodeEditing, setIsCodeEditing] = useState<boolean>(false);
-  const [_currentFileName, setCurrentFileName] = useState<string>("React.tsx");
-  const [showBringForwardMenu, setShowBringForwardMenu] = useState(false);
-  const [showSendBackwardMenu, setShowSendBackwardMenu] = useState(false);
-  const [openedFiles, setOpenedFiles] = useState<string[]>(["React.tsx"]); // 열린 파일 목록
-  const [activeFile, setActiveFile] = useState<string>("React.tsx"); // 현재 활성화된 파일
-  const [texts, setTexts] = useState<Text[]>([]);
-  const [selectedText, setSelectedText] = useState<Text | null>(null);
-  const [isDraggingText, setIsDraggingText] = useState(false);
-  const [textDragOffset, setTextDragOffset] = useState({ x: 0, y: 0 });
-  const [pendingText, setPendingText] = useState(false);
-  const [editingTextId, setEditingTextId] = useState<number | null>(null);
-  const [copiedShape, setCopiedShape] = useState<Shape | null>(null);
-  const [copiedText, setCopiedText] = useState<Text | null>(null);
-  const [lastPastedPosition, setLastPastedPosition] = useState<{ x: number; y: number } | null>(null);
-  const [pasteCount, setPasteCount] = useState(0);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
-  const [selectedShapeIds, setSelectedShapeIds] = useState<Set<number>>(new Set());
-  const [selectedTextIds, setSelectedTextIds] = useState<Set<number>>(new Set());
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [groupDragStart, setGroupDragStart] = useState<{ groupX: number; groupY: number; shapePositions: Map<number, { x: number; y: number }>; textPositions: Map<number, { x: number; y: number }> } | null>(null);
-  const textInputRef = useRef<HTMLDivElement>(null);
+  // Hooks
+  const shapesHook = useShapes();
+  const textsHook = useTexts();
+  const fileManagement = useFileManagement();
+  const selection = useSelection();
+  const groups = useGroups();
+  const dragAndDrop = useDragAndDrop();
+  const resize = useResize();
+  
+  // Destructure shapes hook
+  const {
+    shapes,
+    setShapes,
+    selectedShape,
+    setSelectedShape,
+    shapeColor,
+    setShapeColor,
+    shapeWidth,
+    setShapeWidth,
+    shapeHeight,
+    setShapeHeight,
+    shapeBorderRadius,
+    setShapeBorderRadius,
+    borderRadiusInputValue,
+    setBorderRadiusInputValue,
+    pendingShapeType,
+    setPendingShapeType,
+    showShapeMenu,
+    setShowShapeMenu,
+    showShapeColorMenu,
+    setShowShapeColorMenu,
+    showEffectsMenu,
+    setShowEffectsMenu,
+    showOpacityControl,
+    setShowOpacityControl,
+    showGlowControl,
+    setShowGlowControl,
+    showStrokeMenu,
+    setShowStrokeMenu,
+    showBringForwardMenu,
+    setShowBringForwardMenu,
+    showSendBackwardMenu,
+    setShowSendBackwardMenu,
+  } = shapesHook;
+
+  // Destructure texts hook
+  const {
+    texts,
+    setTexts,
+    selectedText,
+    setSelectedText,
+    textColor,
+    setTextColor,
+    pendingText,
+    setPendingText,
+    editingTextId,
+    setEditingTextId,
+    showTextColorMenu,
+    setShowTextColorMenu,
+    textInputRef,
+  } = textsHook;
+
+  // Destructure file management hook
+  const {
+    files,
+    openedFiles,
+    setOpenedFiles,
+    activeFile,
+    setActiveFile,
+    handleFileClick,
+    handleTabClick,
+    handleTabClose,
+  } = fileManagement;
+
+  // Destructure selection hook
+  const {
+    selectedShapeIds,
+    setSelectedShapeIds,
+    selectedTextIds,
+    setSelectedTextIds,
+    isSelecting,
+    setIsSelecting,
+    selectionBox,
+    setSelectionBox,
+  } = selection;
+
+  // Destructure groups hook
+  const {
+    groups: groupsState,
+    setGroups,
+    selectedGroup,
+    setSelectedGroup,
+    groupDragStart,
+    setGroupDragStart,
+  } = groups;
+  
+  // Alias for easier use
+  const groupsArray = groupsState;
+
+  // Destructure drag and drop hook
+  const {
+    isDragging,
+    setIsDragging,
+    dragOffset,
+    setDragOffset,
+    isDraggingText,
+    setIsDraggingText,
+    textDragOffset,
+    setTextDragOffset,
+    isDrawing,
+    setIsDrawing,
+    drawStart,
+    setDrawStart,
+    drawPreview,
+    setDrawPreview,
+    copiedShape,
+    setCopiedShape,
+    copiedText,
+    setCopiedText,
+    lastPastedPosition,
+    setLastPastedPosition,
+    pasteCount,
+    setPasteCount,
+  } = dragAndDrop;
+
+  // Destructure resize hook
+  const {
+    isResizing,
+    setIsResizing,
+    resizeHandle,
+    setResizeHandle,
+    resizeStart,
+    setResizeStart,
+    isResizingText,
+    setIsResizingText,
+    textResizeHandle,
+    setTextResizeHandle,
+    textResizeStart,
+    setTextResizeStart,
+  } = resize;
+
+  // Code editor hook
+  const {
+    codeView,
+    setCodeView,
+    codeContent,
+    setCodeContent,
+    isCodeEditing,
+    setIsCodeEditing,
+    handleCodeChange,
+  } = useCodeEditor(shapes, texts, setShapes, setTexts);
+
+  // Refs
   const canvasRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const textColorMenuRef = useRef<HTMLDivElement>(null);
@@ -107,109 +204,6 @@ function App() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bringForwardMenuRef = useRef<HTMLDivElement>(null);
   const sendBackwardMenuRef = useRef<HTMLDivElement>(null);
-
-  // 플레이스홀더 파일 목록
-  const [files] = useState<FileItem[]>(DEFAULT_FILES);
-
-
-  // 파일 클릭 시 탭에 추가하거나 전환
-  const handleFileClick = (fileName: string) => {
-    setCurrentFileName(fileName);
-    setActiveFile(fileName);
-    
-    // 이미 열려있지 않으면 탭에 추가
-    if (!openedFiles.includes(fileName)) {
-      setOpenedFiles([...openedFiles, fileName]);
-    }
-  };
-
-  // 탭 클릭 시 파일 전환
-  const handleTabClick = (fileName: string) => {
-    setCurrentFileName(fileName);
-    setActiveFile(fileName);
-  };
-
-  // 탭 닫기
-  const handleTabClose = (e: React.MouseEvent, fileName: string) => {
-    e.stopPropagation();
-    
-    if (openedFiles.length === 1) {
-      // 마지막 탭이면 닫지 않음
-      return;
-    }
-    
-    const newOpenedFiles = openedFiles.filter(f => f !== fileName);
-    setOpenedFiles(newOpenedFiles);
-    
-    // 닫은 파일이 활성화된 파일이면 다른 파일로 전환
-    if (activeFile === fileName) {
-      const newActiveFile = newOpenedFiles[newOpenedFiles.length - 1];
-      setActiveFile(newActiveFile);
-      setCurrentFileName(newActiveFile);
-    }
-  };
-
-  // XML 코드 생성 (메모이제이션)
-  const xmlCode = useMemo(() => generateXML(shapes, texts), [shapes, texts]);
-
-  // CSS 코드 생성 (메모이제이션)
-  const cssCode = useMemo(() => generateCSS(shapes, texts), [shapes, texts]);
-
-  // React 코드 생성 (메모이제이션)
-  const reactCode = useMemo(() => generateReact(shapes, texts), [shapes, texts]);
-
-  // 코드 변경 핸들러
-  const handleCodeChange = (newCode: string) => {
-    setCodeContent(newCode);
-    setIsCodeEditing(true);
-    
-    try {
-      let parsedShapes: Shape[] = [];
-      let parsedTexts: Text[] = [];
-      
-      if (codeView === "xml") {
-        const result = parseXML(newCode);
-        parsedShapes = result.shapes;
-        parsedTexts = result.texts;
-      } else if (codeView === "css") {
-        const result = parseCSS(newCode);
-        parsedShapes = result.shapes;
-        parsedTexts = result.texts;
-      } else if (codeView === "react") {
-        const result = parseReact(newCode);
-        parsedShapes = result.shapes;
-        parsedTexts = result.texts;
-      }
-      
-      if (parsedShapes.length > 0 || parsedTexts.length > 0) {
-        setShapes(parsedShapes);
-        setTexts(parsedTexts);
-      }
-    } catch (error) {
-      console.error("코드 파싱 오류:", error);
-    }
-  };
-
-  // shapes, texts 변경 시 코드 업데이트
-  useEffect(() => {
-    if (!isCodeEditing) {
-      const generatedCode = codeView === "xml" ? xmlCode : codeView === "css" ? cssCode : reactCode;
-      setCodeContent(generatedCode);
-    }
-  }, [shapes, texts, codeView, isCodeEditing, xmlCode, cssCode, reactCode]);
-      
-  // codeView 변경 시 코드 업데이트
-  useEffect(() => {
-    setIsCodeEditing(false);
-    const generatedCode = codeView === "xml" ? xmlCode : codeView === "css" ? cssCode : reactCode;
-    setCodeContent(generatedCode);
-  }, [codeView, xmlCode, cssCode, reactCode]);
-
-  // 초기 코드 설정
-  useEffect(() => {
-    const generatedCode = codeView === "xml" ? xmlCode : codeView === "css" ? cssCode : reactCode;
-    setCodeContent(generatedCode);
-  }, []);
 
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
@@ -347,8 +341,8 @@ function App() {
 
           setShapes((prevShapes) => prevShapes.map((shape) => (shape.id === selectedShape.id ? updatedShape : shape)));
           setSelectedShape(updatedShape);
-          setShapeX(newX);
-          setShapeY(newY);
+          // setShapeX(newX); // Not used
+          // setShapeY(newY); // Not used
         }
       }
       
@@ -777,8 +771,8 @@ function App() {
       setShapeColor(newColor);
       setShapeWidth(newWidth);
       setShapeHeight(newHeight);
-      setShapeX(newX);
-      setShapeY(newY);
+      // setShapeX(newX); // Not used
+      // setShapeY(newY); // Not used
       setShapeBorderRadius(newBorderRadius ?? 0);
       setBorderRadiusInputValue((newBorderRadius ?? 0).toString());
     }
@@ -1077,7 +1071,7 @@ function App() {
     
     // 생성 순서에 따라 zIndex 설정
     const allGroupItems = [
-      ...groups.map(g => ({ id: g.id, type: 'group' as const })),
+      ...groupsArray.map(g => ({ id: g.id, type: 'group' as const })),
       ...shapes.map(s => ({ id: s.id, type: 'shape' as const })),
       ...texts.map(t => ({ id: t.id, type: 'text' as const }))
     ].sort((a, b) => a.id - b.id);
@@ -1093,7 +1087,7 @@ function App() {
       zIndex: allGroupItems.length + 1,
     };
     
-    setGroups([...groups, newGroup]);
+    setGroups([...groupsArray, newGroup]);
     setSelectedGroup(newGroup);
     setSelectedShape(null);
     setSelectedText(null);
@@ -1106,7 +1100,7 @@ function App() {
     if (!selectedGroup) return;
     
     // 그룹 해제: 그룹 삭제하고 요소들은 그대로 유지
-    setGroups(groups.filter(g => g.id !== selectedGroup.id));
+    setGroups(groupsArray.filter(g => g.id !== selectedGroup.id));
     setSelectedGroup(null);
     setSelectedShape(null);
     setSelectedText(null);
@@ -1130,7 +1124,7 @@ function App() {
     const target = e.target as HTMLElement;
     
     // 그룹에 속한 도형인지 확인
-    const group = groups.find(g => g.shapeIds.includes(shape.id));
+    const group = groupsArray.find(g => g.shapeIds.includes(shape.id));
     
     // 그룹에 속한 도형은 리사이즈 불가
     if (group && target.classList.contains("resize-handle")) {
@@ -1187,8 +1181,8 @@ function App() {
         setShapeColor(shape.color);
         setShapeWidth(shape.width);
         setShapeHeight(shape.height);
-        setShapeX(shape.x);
-        setShapeY(shape.y);
+        // setShapeX(shape.x); // Not used
+        // setShapeY(shape.y); // Not used
         const borderRadius = shape.borderRadius ?? (shape.type === "circle" || shape.type === "ellipse" ? Math.min(shape.width, shape.height) / 2 : 0);
         setShapeBorderRadius(borderRadius);
         setBorderRadiusInputValue(borderRadius.toString());
@@ -1264,8 +1258,8 @@ function App() {
     setShapeColor(shape.color);
     setShapeWidth(shape.width);
     setShapeHeight(shape.height);
-    setShapeX(shape.x);
-    setShapeY(shape.y);
+        // setShapeX(shape.x); // Not used
+        // setShapeY(shape.y); // Not used
     const borderRadius = shape.borderRadius ?? (shape.type === "roundedRectangle" ? 10 : 0);
     setShapeBorderRadius(borderRadius);
     setBorderRadiusInputValue(borderRadius.toString());
@@ -1298,7 +1292,7 @@ function App() {
     const target = e.target as HTMLElement;
     
     // 그룹에 속한 텍스트인지 확인
-    const group = groups.find(g => g.textIds.includes(text.id));
+    const group = groupsArray.find(g => g.textIds.includes(text.id));
     
     // 그룹에 속한 텍스트는 리사이즈 불가
     if (group && target.classList.contains("text-resize-handle")) {
@@ -1575,7 +1569,7 @@ function App() {
       }
       
       // 그룹에 속한 텍스트는 리사이즈 불가
-      const group = groups.find(g => g.textIds.includes(selectedText.id));
+      const group = groupsArray.find(g => g.textIds.includes(selectedText.id));
       if (group) {
         return;
       }
@@ -1710,7 +1704,7 @@ function App() {
       
       setShapes(updatedShapes);
       setTexts(updatedTexts);
-      setGroups(groups.map(g => g.id === selectedGroup.id ? finalGroup : g));
+      setGroups(groupsArray.map(g => g.id === selectedGroup.id ? finalGroup : g));
       setSelectedGroup(finalGroup);
       return;
     }
@@ -1723,7 +1717,7 @@ function App() {
       }
       
       // 그룹에 속한 텍스트는 개별 드래그 불가
-      const group = groups.find(g => g.textIds.includes(selectedText.id));
+      const group = groupsArray.find(g => g.textIds.includes(selectedText.id));
       if (group) {
         return;
       }
@@ -1780,7 +1774,7 @@ function App() {
       }
       
       // 그룹에 속한 도형은 리사이즈 불가
-      const group = groups.find(g => g.shapeIds.includes(selectedShape.id));
+      const group = groupsArray.find(g => g.shapeIds.includes(selectedShape.id));
       if (group) {
         return;
       }
@@ -1841,8 +1835,8 @@ function App() {
 
       setShapeWidth(newWidth);
       setShapeHeight(newHeight);
-      setShapeX(newX);
-      setShapeY(newY);
+      // setShapeX(newX); // Not used
+      // setShapeY(newY); // Not used
 
       const updatedShape = {
         ...selectedShape,
@@ -1921,7 +1915,7 @@ function App() {
       
       setShapes(updatedShapes);
       setTexts(updatedTexts);
-      setGroups(groups.map(g => g.id === selectedGroup.id ? finalGroup : g));
+      setGroups(groupsArray.map(g => g.id === selectedGroup.id ? finalGroup : g));
       setSelectedGroup(finalGroup);
       return;
     } else if (isDragging && selectedShape && canvasRef.current) {
@@ -1931,7 +1925,7 @@ function App() {
       }
       
       // 그룹에 속한 도형은 개별 드래그 불가
-      const group = groups.find(g => g.shapeIds.includes(selectedShape.id));
+      const group = groupsArray.find(g => g.shapeIds.includes(selectedShape.id));
       if (group) {
         return;
       }
@@ -1946,8 +1940,8 @@ function App() {
       const constrainedX = Math.max(0, Math.min(newX, maxX));
       const constrainedY = Math.max(0, Math.min(newY, maxY));
 
-      setShapeX(constrainedX);
-      setShapeY(constrainedY);
+      // setShapeX(constrainedX); // Not used
+      // setShapeY(constrainedY); // Not used
 
       const updatedShape = {
         ...selectedShape,
@@ -1976,58 +1970,12 @@ function App() {
 
   return (
     <div className="h-screen flex bg-black dark:bg-black">
-      {/* 왼쪽 패널: 파일 탐색기 (Cursor 스타일) */}
-      <div className="w-64 bg-black dark:bg-black border-r border-pink-300/30 dark:border-pink-300/20/30 flex flex-col">
-        <div className="px-4 py-2 border-b border-pink-300/30 dark:border-pink-300/20/30 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white dark:text-white">
-            Current Directory
-          </h2>
-          <div className="flex gap-1">
-            <button className="p-1 hover:bg-pink-300 dark:hover:bg-pink-300 rounded text-white hover:text-black transition-colors" title="Add File">
-              <img src={newfileIcon} alt="New File" className="w-4 h-4" />
-            </button>
-            <button className="p-1 hover:bg-pink-300 dark:hover:bg-pink-300 rounded text-white hover:text-black transition-colors" title="Add Folder">
-              <img src={newfolderIcon} alt="New Folder" className="w-4 h-4" />
-            </button>
-            <button className="p-1 hover:bg-pink-300 dark:hover:bg-pink-300 rounded text-white hover:text-black transition-colors" title="Refresh">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto p-2">
-          <div className="space-y-0.5">
-            {files.map((file, index) => (
-              <div
-                key={index}
-                onClick={() => handleFileClick(file.name)}
-                className={`px-2 py-1.5 rounded text-sm flex items-center gap-2 cursor-pointer ${
-                  activeFile === file.name
-                    ? "bg-pink-300 dark:bg-pink-300 text-black"
-                    : "text-white dark:text-white hover:bg-pink-300 dark:hover:bg-pink-300 hover:text-black"
-                }`}
-              >
-                {file.type === "folder" ? (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                  </svg>
-                ) : (
-                  (() => {
-                    const icon = getFileIcon(file.name, file.extension);
-                    return icon ? (
-                      <img src={icon} alt={file.name} className="w-auto h-4" />
-                    ) : (
-                      <span className="text-xs">{"<>"}</span>
-                    );
-                  })()
-                )}
-                <span className="flex-1 truncate">{file.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* 왼쪽 패널: 파일 탐색기 */}
+      <FileExplorer 
+        files={files}
+        activeFile={activeFile}
+        onFileClick={handleFileClick}
+      />
 
       {/* 중간 패널: 파워포인트 스타일 캔버스 */}
       <div className="flex-1 flex flex-col bg-black dark:bg-black border-r border-pink-300/30 dark:border-pink-300/20/30">
@@ -3145,7 +3093,7 @@ function App() {
             {[...shapes].sort((a, b) => a.zIndex - b.zIndex).map((shape) => {
               const isSelected = selectedShape?.id === shape.id;
               const isMultiSelected = selectedShapeIds.has(shape.id);
-              const isInGroup = groups.some(g => g.shapeIds.includes(shape.id));
+              const isInGroup = groupsArray.some(g => g.shapeIds.includes(shape.id));
               return (
                 <div
                   key={shape.id}
@@ -3428,7 +3376,7 @@ function App() {
               );
             })}
             {/* 그룹 바운딩 박스 렌더링 */}
-            {[...groups].sort((a, b) => a.zIndex - b.zIndex).map((group) => {
+            {[...groupsArray].sort((a, b) => a.zIndex - b.zIndex).map((group) => {
               const isSelected = selectedGroup?.id === group.id;
               const updatedGroup = updateGroupBounds(group);
               
@@ -3493,7 +3441,7 @@ function App() {
               const isSelected = selectedText?.id === text.id;
               const isMultiSelected = selectedTextIds.has(text.id);
               const isEditing = editingTextId === text.id;
-              const isInGroup = groups.some(g => g.textIds.includes(text.id));
+              const isInGroup = groupsArray.some(g => g.textIds.includes(text.id));
               
               if (isEditing) {
                 return (
@@ -3722,98 +3670,32 @@ function App() {
             CSS
           </label>
           <label className="flex items-center gap-2 text-sm text-white dark:text-white cursor-pointer">
-            <input type="checkbox" className="accent-pink-300"
-            checked={codeView === "react"}
-            onChange={() => setCodeView("react")}
+            <input 
+              type="checkbox" 
+              className="accent-pink-300"
+              checked={codeView === "react"}
+              onChange={() => setCodeView("react")}
             />
             React
           </label>
         </div>
 
-        {/* 파일 탭 (여러 개 열 수 있음) */}
-        <div className="px-2 pt-1 flex items-end gap-1 overflow-x-auto">
-          {openedFiles.map((fileName) => {
-            const file = files.find(f => f.name === fileName);
-            const icon = getFileIcon(fileName, file?.extension);
-            return (
-              <div
-                key={fileName}
-                onClick={() => handleTabClick(fileName)}
-                className={`px-3 py-1 text-sm flex items-center gap-2 cursor-pointer min-w-fit ${
-                  activeFile === fileName
-                    ? "bg-[#1B0F0F] dark:bg-[#1B0F0F] text-white border-t border-pink-300"
-                    : "bg-black dark:bg-black text-white hover:bg-gray-900 dark:hover:bg-gray-900"
-                }`}
-              >
-                {icon ? (
-                  <img src={icon} alt={fileName} className="w-auto h-4" />
-                ) : (
-                  <span className="text-xs">{"<>"}</span>
-                )}
-                <span className="truncate max-w-[120px]">{fileName}</span>
-                {openedFiles.length > 1 && (
-                  <button
-                    onClick={(e) => handleTabClose(e, fileName)}
-                    className="ml-1 hover:bg-gray-700 dark:hover:bg-gray-700 rounded px-1 text-xs"
-                    title="닫기"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {/* 파일 탭 */}
+        <FileTabs
+          openedFiles={openedFiles}
+          activeFile={activeFile}
+          files={files}
+          onTabClick={handleTabClick}
+          onTabClose={handleTabClose}
+        />
 
         {/* 코드 편집 창 */}
-        <div className="flex-1 overflow-auto -mt-px relative">
-          {/* SyntaxHighlighter 오버레이 (하이라이팅 표시용) */}
-          <div 
-            className="absolute inset-0 pointer-events-none overflow-auto"
-            style={{ zIndex: 1 }}
-          >
-          <SyntaxHighlighter
-            language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
-            style={dracula}
-            customStyle={{
-              margin: 0,
-              padding: "1rem",
-              fontSize: "0.75rem",
-                backgroundColor: "transparent",
-              height: "100%",
-            }}
-            showLineNumbers={false}
-              PreTag="div"
-          >
-              {codeContent || (codeView === "xml" ? "<!-- 코드가 여기에 표시됩니다 -->" : codeView === "css" ? "/* 코드가 여기에 표시됩니다 */" : "// 코드가 여기에 표시됩니다")}
-          </SyntaxHighlighter>
-          </div>
-          {/* 편집 가능한 textarea */}
-          <textarea
-            value={codeContent}
-            onChange={(e) => handleCodeChange(e.target.value)}
-            onBlur={() => setIsCodeEditing(false)}
-            onScroll={(e) => {
-              const overlay = e.currentTarget.parentElement?.querySelector('.absolute') as HTMLElement;
-              if (overlay) {
-                overlay.scrollTop = e.currentTarget.scrollTop;
-                overlay.scrollLeft = e.currentTarget.scrollLeft;
-              }
-            }}
-            className="w-full h-full p-4 text-sm font-mono resize-none focus:outline-none relative"
-            style={{
-              backgroundColor: "transparent",
-              color: "transparent",
-              caretColor: "#f8f8f2",
-              fontSize: "0.75rem",
-              lineHeight: "1.5",
-              tabSize: 2,
-              zIndex: 2,
-            }}
-            spellCheck={false}
-            placeholder=""
-          />
-        </div>
+        <CodeEditor
+          codeView={codeView}
+          codeContent={codeContent}
+          onCodeChange={handleCodeChange}
+          onCodeViewChange={setCodeView}
+        />
       </div>
     </div>
   );
