@@ -1,0 +1,130 @@
+.canvas-renderer-container {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  margin: 0 auto;
+  /* 반응형 컨테이너 */
+  box-sizing: border-box;
+}
+
+.canvas-element-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-renderer-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #ff4444;
+}
+
+.edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.ghost-box {
+  position: absolute;
+  border: 2px dashed #007acc;
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: move;
+  background-color: rgba(0, 122, 204, 0.05);
+  transition: background-color 0.2s;
+}
+
+.ghost-box:hover {
+  background-color: rgba(0, 122, 204, 0.1);
+  border-color: #005a9e;
+}
+
+.resize-handle {
+  position: absolute;
+  background: #007acc;
+  border: 1px solid #ffffff;
+  box-sizing: border-box;
+  z-index: 1001;
+}
+
+.resize-handle-n,
+.resize-handle-s {
+  width: 100%;
+  height: 8px;
+  left: 0;
+  cursor: ns-resize;
+}
+
+.resize-handle-n {
+  top: -4px;
+}
+
+.resize-handle-s {
+  bottom: -4px;
+}
+
+.resize-handle-e,
+.resize-handle-w {
+  width: 8px;
+  height: 100%;
+  top: 0;
+  cursor: ew-resize;
+}
+
+.resize-handle-e {
+  right: -4px;
+}
+
+.resize-handle-w {
+  left: -4px;
+}
+
+.resize-handle-ne,
+.resize-handle-nw,
+.resize-handle-se,
+.resize-handle-sw {
+  width: 12px;
+  height: 12px;
+  background: #007acc;
+  border: 2px solid #ffffff;
+  cursor: nwse-resize;
+}
+
+.resize-handle-ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.resize-handle-nw {
+  top: -6px;
+  left: -6px;
+}
+
+.resize-handle-se {
+  bottom: -6px;
+  right: -6px;
+}
+
+.resize-handle-sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.resize-handle:hover {
+  background: #005a9e;
+}

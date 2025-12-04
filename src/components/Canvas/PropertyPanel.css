@@ -1,0 +1,50 @@
+.property-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  z-index: 1000;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.property-panel-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.property-panel-content {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex: 1;
+}
+
+.property-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.property-group label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.property-value {
+  font-size: 12px;
+  color: #333;
+  font-family: monospace;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+

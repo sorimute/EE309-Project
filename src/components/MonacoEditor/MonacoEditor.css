@@ -1,0 +1,50 @@
+.monaco-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+}
+
+.monaco-editor-header {
+  padding: 8px 16px;
+  background: #252526;
+  border-bottom: 1px solid #3e3e42;
+  display: flex;
+  align-items: center;
+}
+
+.monaco-editor-title {
+  font-size: 13px;
+  color: #cccccc;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monaco-editor-unsaved-indicator {
+  color: #ff6b6b;
+  font-size: 10px;
+  line-height: 1;
+  display: inline-block;
+}
+
+.monaco-editor-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Monaco Editor 텍스트 색상 강조 */
+.monaco-editor-content .monaco-editor {
+  color: #ffffff !important;
+}
+
+.monaco-editor-content .monaco-editor .view-lines .view-line {
+  color: #ffffff !important;
+}
+
+.monaco-editor-content .monaco-editor .mtk1 {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+

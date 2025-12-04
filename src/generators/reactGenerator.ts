@@ -1,10 +1,8 @@
 import { Shape, Text } from '../types';
 import { isClipPathShape } from '../utils/shapeUtils';
 
-export const generateReact = (shapes: Shape[], texts: Text[]): string => {
-  if (shapes.length === 0 && texts.length === 0) return "// 코드가 여기에 표시됩니다";
-  
-  const getShapeReact = (shape: Shape) => {
+// 개별 요소 생성 함수 (코드 통합용)
+function getShapeReact(shape: Shape): string {
     if (shape.type === "triangle") {
       let svgStyle = `      position: 'absolute',\n      left: ${shape.x},\n      top: ${shape.y},\n      width: ${shape.width},\n      height: ${shape.height},\n      zIndex: ${shape.zIndex},`;
       
@@ -142,11 +140,14 @@ export const generateReact = (shapes: Shape[], texts: Text[]): string => {
     return `  <div\n    className="shape-${shape.id}"\n    style={{\n${style}\n    }}\n  />`;
   };
   
-  const getTextReact = (text: Text) => {
+function getTextReact(text: Text): string {
     const escapedText = text.text.replace(/'/g, "\\'").replace(/\n/g, "\\n");
     let style = `      position: 'absolute',\n      left: ${text.x},\n      top: ${text.y},\n      width: ${text.width},\n      height: ${text.height},\n      fontSize: ${text.fontSize},\n      color: '${text.color}',\n      fontFamily: '${text.fontFamily}',\n      fontWeight: '${text.fontWeight}',\n      fontStyle: '${text.fontStyle}',\n      textAlign: '${text.textAlign}',\n      zIndex: ${text.zIndex},`;
     return `  <div\n    className="text-${text.id}"\n    style={{\n${style}\n    }}\n  >\n    ${escapedText}\n  </div>`;
   };
+  
+export const generateReact = (shapes: Shape[], texts: Text[]): string => {
+  if (shapes.length === 0 && texts.length === 0) return "// 코드가 여기에 표시됩니다";
   
   const shapeParts = shapes.map((shape) => getShapeReact(shape));
   const textParts = texts.map((text) => getTextReact(text));
@@ -154,4 +155,13 @@ export const generateReact = (shapes: Shape[], texts: Text[]): string => {
   
   return `import React from 'react';\n\nfunction Shapes() {\n  return (\n    <>\n${reactParts.join("\n")}\n    </>\n  );\n}\n\nexport default Shapes;`;
 };
+
+// 개별 요소 생성 함수 export (코드 통합용)
+export function getShapeReactCode(shape: Shape): string {
+  return getShapeReact(shape);
+}
+
+export function getTextReactCode(text: Text): string {
+  return getTextReact(text);
+}
 

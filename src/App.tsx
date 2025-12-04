@@ -38,10 +38,27 @@ import { generateXML, generateCSS, generateReact } from './generators';
 // Parsers
 import { parseXML, parseCSS, parseReact } from './parsers';
 
+// AST Code Modifier
+import { addElementToCode } from './lib/ast/codeModifier';
+
+// File System
+import { readFile, writeFile } from './lib/fileSystem/fileSystem';
+
+// React Generator
+import { getShapeReactCode, getTextReactCode } from './generators/reactGenerator';
+
 // Components
 import EditableText from './components/EditableText';
+import { SelectFolder } from './components/SelectFolder/SelectFolder';
+import { FileTree } from './components/FileTree/FileTree';
+import { MonacoEditor } from './components/MonacoEditor/MonacoEditor';
+import { Canvas } from './components/Canvas/Canvas';
+import { useProjectStore } from './stores/projectStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
+  const { projectRoot, setProjectRoot, selectedFile } = useProjectStore();
+  const [isLoading, setIsLoading] = useState(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
   const [shapeColor, setShapeColor] = useState(DEFAULT_SHAPE_COLOR);
@@ -493,7 +510,7 @@ function App() {
   }, [selectedShape, selectedText, pendingShapeType, pendingText, isDrawing, editingTextId, copiedShape, copiedText, shapes, texts, lastPastedPosition]);
 
   // 텍스트 추가 핸들러
-  const handleAddText = () => {
+  const handleAddText = async () => {
     if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const centerX = rect.width / 2;
@@ -525,6 +542,20 @@ function App() {
       setSelectedText(newText);
       setSelectedShape(null);
       setPendingText(false);
+      
+      // React 파일인 경우 코드에 텍스트 추가
+      if (selectedFile && (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx'))) {
+        try {
+          const currentCode = await readFile(selectedFile);
+          const textJsx = getTextReactCode(newText);
+          const updatedCode = addElementToCode(currentCode, textJsx);
+          await writeFile(selectedFile, updatedCode);
+          // Monaco Editor에 변경사항 알림
+          window.dispatchEvent(new CustomEvent('code-updated', { detail: updatedCode }));
+        } catch (error) {
+          console.error('텍스트를 코드에 추가하는데 실패했습니다:', error);
+        }
+      }
     }
   };
 
@@ -606,7 +637,7 @@ function App() {
     }
   };
 
-  const handleCanvasMouseUp = (e: React.MouseEvent) => {
+  const handleCanvasMouseUp = async (e: React.MouseEvent) => {
     if (isDrawing && pendingShapeType && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const endX = e.clientX - rect.left;
@@ -647,6 +678,20 @@ function App() {
         const borderRadius = newShape.borderRadius ?? (newShape.type === "roundedRectangle" ? 10 : 0);
         setShapeBorderRadius(borderRadius);
         setBorderRadiusInputValue(borderRadius.toString());
+        
+        // React 파일인 경우 코드에 도형 추가
+        if (selectedFile && (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx'))) {
+          try {
+            const currentCode = await readFile(selectedFile);
+            const shapeJsx = getShapeReactCode(newShape);
+            const updatedCode = addElementToCode(currentCode, shapeJsx);
+            await writeFile(selectedFile, updatedCode);
+            // Monaco Editor에 변경사항 알림
+            window.dispatchEvent(new CustomEvent('code-updated', { detail: updatedCode }));
+          } catch (error) {
+            console.error('도형을 코드에 추가하는데 실패했습니다:', error);
+          }
+        }
       }
       
       setIsDrawing(false);
@@ -1974,9 +2019,14 @@ function App() {
     setGroupDragStart(null);
   };
 
+  // 프로젝트 루트가 없으면 폴더 선택 화면 표시
+  if (!projectRoot) {
+    return <SelectFolder onFolderSelected={setProjectRoot} isLoading={isLoading} setIsLoading={setIsLoading} />;
+  }
+
   return (
     <div className="h-screen flex bg-black dark:bg-black">
-      {/* 왼쪽 패널: 파일 탐색기 (Cursor 스타일) */}
+      {/* 왼쪽 패널: 파일 탐색기 (실제 파일 트리 또는 기본 파일 목록) */}
       <div className="w-64 bg-black dark:bg-black border-r border-pink-300/30 dark:border-pink-300/20/30 flex flex-col">
         <div className="px-4 py-2 border-b border-pink-300/30 dark:border-pink-300/20/30 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white dark:text-white">
@@ -1997,7 +2047,54 @@ function App() {
           </div>
         </div>
         <div className="flex-1 overflow-auto p-2">
-          <div className="space-y-0.5">
+          {/* 실제 파일 트리 표시 */}
+          <div style={{ height: '100%', minHeight: 0 }}>
+            {projectRoot ? (
+              <ErrorBoundary 
+                fallback={
+                  <div className="text-white p-4">
+                    <div>파일 트리를 로드할 수 없습니다</div>
+                    <div className="text-sm mt-2 opacity-70">기본 파일 목록을 사용합니다</div>
+                    <div className="space-y-0.5 mt-4">
+                      {files.map((file, index) => (
+                        <div
+                          key={index}
+                          onClick={() => handleFileClick(file.name)}
+                          className={`px-2 py-1.5 rounded text-sm flex items-center gap-2 cursor-pointer ${
+                            activeFile === file.name
+                              ? "bg-pink-300 dark:bg-pink-300 text-black"
+                              : "text-white dark:text-white hover:bg-pink-300 dark:hover:bg-pink-300 hover:text-black"
+                          }`}
+                        >
+                          {file.type === "folder" ? (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                            </svg>
+                          ) : (
+                            (() => {
+                              const icon = getFileIcon(file.name, file.extension);
+                              return icon ? (
+                                <img src={icon} alt={file.name} className="w-auto h-4" />
+                              ) : (
+                                <span className="text-xs">{"<>"}</span>
+                              );
+                            })()
+                          )}
+                          <span className="flex-1 truncate">{file.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                }
+              >
+                <FileTree />
+              </ErrorBoundary>
+            ) : (
+              <div className="text-white p-4">프로젝트 폴더를 선택하세요</div>
+            )}
+          </div>
+          {/* 기본 파일 목록은 숨김 (필요시 주석 해제) */}
+          {/* <div className="space-y-0.5">
             {files.map((file, index) => (
               <div
                 key={index}
@@ -2025,14 +2122,20 @@ function App() {
                 <span className="flex-1 truncate">{file.name}</span>
               </div>
             ))}
-          </div>
+          </div> */}
         </div>
       </div>
 
       {/* 중간 패널: 파워포인트 스타일 캔버스 */}
       <div className="flex-1 flex flex-col bg-black dark:bg-black border-r border-pink-300/30 dark:border-pink-300/20/30">
-        {/* 상단 리본 바 */}
-        <div className="bg-black dark:bg-black border-b border-pink-300/30 dark:border-pink-300/20/30 px-4 py-3 flex items-center gap-4">
+        {/* 상단 리본 바 - 파일이 열려있을 때만 표시 */}
+        {selectedFile && (
+          selectedFile.endsWith('.tsx') || 
+          selectedFile.endsWith('.jsx') ||
+          selectedFile.endsWith('.html') ||
+          selectedFile.endsWith('.css')
+        ) && (
+          <div className="bg-black dark:bg-black border-b border-pink-300/30 dark:border-pink-300/20/30 px-4 py-3 flex items-center gap-4">
           {/* 아이콘 버튼 그룹 */}
           <div className="flex items-center gap-0.5">
             {/* 텍스트 추가 버튼 */}
@@ -3080,23 +3183,527 @@ function App() {
             </div>
           </div>
         </div>
+        )}
 
         {/* 캔버스 영역 (파워포인트 스타일 - 흰색 배경) */}
-        <div className="flex-1 p-8 overflow-auto bg-black dark:bg-black">
-          <div
-            ref={canvasRef}
-            className="relative bg-white w-full h-full shadow-lg"
-            style={{ cursor: pendingShapeType ? "crosshair" : "default", minHeight: "600px" }}
-            onMouseMove={handleMouseMove}
-            onMouseDown={handleCanvasMouseDown}
-            onMouseUp={handleCanvasMouseUp}
-            onMouseLeave={(e) => {
-              if (isDrawing) {
-                handleCanvasMouseUp(e);
-              }
-              handleMouseUp();
-            }}
-          >
+        <div className="flex-1 flex flex-col bg-black dark:bg-black">
+          {selectedFile && (
+            selectedFile.endsWith('.tsx') || 
+            selectedFile.endsWith('.jsx') ||
+            selectedFile.endsWith('.html') ||
+            selectedFile.endsWith('.css')
+          ) ? (
+            <div className="relative flex-1 w-full h-full overflow-hidden">
+              <ErrorBoundary fallback={<div className="text-white p-4">캔버스 렌더링 오류가 발생했습니다.</div>}>
+                <Canvas />
+              </ErrorBoundary>
+              {/* 도형/텍스트 오버레이 */}
+              <div
+                ref={canvasRef}
+                className="absolute inset-0"
+                style={{
+                  pointerEvents: 'auto',
+                  cursor: pendingShapeType ? "crosshair" : "default",
+                  overflow: 'auto',
+                }}
+                onMouseMove={handleMouseMove}
+                onMouseDown={handleCanvasMouseDown}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={(e) => {
+                  if (isDrawing) {
+                    handleCanvasMouseUp(e);
+                  }
+                  handleMouseUp();
+                }}
+              >
+                {/* 올가미 선택 박스 */}
+                {selectionBox && isSelecting && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${selectionBox.x}px`,
+                      top: `${selectionBox.y}px`,
+                      width: `${selectionBox.width}px`,
+                      height: `${selectionBox.height}px`,
+                      border: "2px dashed #9ca3af",
+                      backgroundColor: "rgba(156, 163, 175, 0.1)",
+                      pointerEvents: "none",
+                      zIndex: 9998,
+                    }}
+                  />
+                )}
+                {/* 드래그 미리보기 */}
+                {drawPreview && pendingShapeType && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${drawPreview.x}px`,
+                      top: `${drawPreview.y}px`,
+                      width: `${drawPreview.width}px`,
+                      height: `${drawPreview.height}px`,
+                      border: "2px dashed #f9a8d4",
+                      backgroundColor: "rgba(249, 168, 212, 0.2)",
+                      pointerEvents: "none",
+                      zIndex: 9999,
+                      borderRadius: pendingShapeType === "circle" || pendingShapeType === "ellipse" 
+                        ? "50%" 
+                        : pendingShapeType === "roundedRectangle" 
+                          ? "10px" 
+                          : pendingShapeType === "rectangle"
+                            ? `${shapeBorderRadius}px`
+                            : "0",
+                      clipPath: pendingShapeType === "triangle" ? "polygon(50% 0%, 0% 100%, 100% 100%)" :
+                               pendingShapeType === "diamond" ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" :
+                               pendingShapeType === "star" ? "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)" :
+                               pendingShapeType === "hexagon" ? "polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)" :
+                               pendingShapeType === "pentagon" ? "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)" : undefined,
+                      transform: pendingShapeType === "parallelogram" ? "skew(-20deg)" : undefined,
+                    }}
+                  />
+                )}
+                {/* 도형 렌더링 */}
+                {[...shapes].sort((a, b) => a.zIndex - b.zIndex).map((shape) => {
+                  const isSelected = selectedShape?.id === shape.id;
+                  const isMultiSelected = selectedShapeIds.has(shape.id);
+                  const isInGroup = groups.some(g => g.shapeIds.includes(shape.id));
+                  return (
+                    <div
+                      key={shape.id}
+                      className="shape-container"
+                      onMouseDown={(e) => handleMouseDown(e, shape)}
+                      style={{
+                        position: "absolute",
+                        left: `${shape.x}px`,
+                        top: `${shape.y}px`,
+                        width: `${shape.width}px`,
+                        height: `${shape.height}px`,
+                        pointerEvents: "auto",
+                        zIndex: shape.zIndex,
+                      }}
+                    >
+                      {shape.type === "triangle" || isClipPathShape(shape.type) ? (
+                        <svg
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            opacity: shape.opacity !== undefined ? shape.opacity : undefined,
+                            filter: (() => {
+                              const filters: string[] = [];
+                              if (shape.shadowType && shape.shadowType !== "none" && shape.shadowType === "outer") {
+                                filters.push(`drop-shadow(${shape.shadowOffsetX ?? 4}px ${shape.shadowOffsetY ?? 4}px ${shape.shadowBlur ?? 8}px ${shape.shadowColor ?? "rgba(0, 0, 0, 0.3)"})`);
+                              }
+                              if (shape.glowEnabled) {
+                                const glowColor = shape.glowColor ?? shape.color;
+                                const glowBlur = shape.glowBlur ?? 20;
+                                filters.push(`drop-shadow(0 0 ${glowBlur}px ${glowColor})`);
+                              }
+                              return filters.length > 0 ? filters.join(" ") : undefined;
+                            })(),
+                          }}
+                        >
+                          {shape.type === "triangle" ? (
+                            <polygon
+                              points={`${shape.width / 2},0 0,${shape.height} ${shape.width},${shape.height}`}
+                              fill={shape.color}
+                              stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? (shape.strokeColor ?? "#000000")
+                                : (isSelected ? "#f9a8d4" : "none")}
+                              strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? shape.strokeWidth 
+                                : (isSelected ? "2" : "0")}
+                            />
+                          ) : shape.type === "diamond" ? (
+                            <polygon
+                              points={`${shape.width / 2},0 ${shape.width},${shape.height / 2} ${shape.width / 2},${shape.height} 0,${shape.height / 2}`}
+                              fill={shape.color}
+                              stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? (shape.strokeColor ?? "#000000")
+                                : (isSelected ? "#f9a8d4" : "none")}
+                              strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? shape.strokeWidth 
+                                : (isSelected ? "2" : "0")}
+                            />
+                          ) : shape.type === "star" ? (
+                            <polygon
+                              points={`${shape.width * 0.5},0 ${shape.width * 0.61},${shape.height * 0.35} ${shape.width * 0.98},${shape.height * 0.35} ${shape.width * 0.68},${shape.height * 0.57} ${shape.width * 0.79},${shape.height * 0.91} ${shape.width * 0.5},${shape.height * 0.7} ${shape.width * 0.21},${shape.height * 0.91} ${shape.width * 0.32},${shape.height * 0.57} ${shape.width * 0.02},${shape.height * 0.35} ${shape.width * 0.39},${shape.height * 0.35}`}
+                              fill={shape.color}
+                              stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? (shape.strokeColor ?? "#000000")
+                                : (isSelected ? "#f9a8d4" : "none")}
+                              strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? shape.strokeWidth 
+                                : (isSelected ? "2" : "0")}
+                            />
+                          ) : shape.type === "hexagon" ? (
+                            <polygon
+                              points={`${shape.width * 0.3},0 ${shape.width * 0.7},0 ${shape.width},${shape.height * 0.5} ${shape.width * 0.7},${shape.height} ${shape.width * 0.3},${shape.height} 0,${shape.height * 0.5}`}
+                              fill={shape.color}
+                              stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? (shape.strokeColor ?? "#000000")
+                                : (isSelected ? "#f9a8d4" : "none")}
+                              strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? shape.strokeWidth 
+                                : (isSelected ? "2" : "0")}
+                            />
+                          ) : shape.type === "pentagon" ? (
+                            <polygon
+                              points={`${shape.width * 0.5},0 ${shape.width},${shape.height * 0.38} ${shape.width * 0.82},${shape.height} ${shape.width * 0.18},${shape.height} 0,${shape.height * 0.38}`}
+                              fill={shape.color}
+                              stroke={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? (shape.strokeColor ?? "#000000")
+                                : (isSelected ? "#f9a8d4" : "none")}
+                              strokeWidth={shape.strokeWidth && shape.strokeWidth > 0 
+                                ? shape.strokeWidth 
+                                : (isSelected ? "2" : "0")}
+                            />
+                          ) : null}
+                        </svg>
+                      ) : shape.type === "image" ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            backgroundImage: `url(${shape.imageUrl})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            backgroundRepeat: "no-repeat",
+                            opacity: shape.opacity !== undefined ? shape.opacity : undefined,
+                            border: shape.strokeWidth && shape.strokeWidth > 0 
+                              ? `${shape.strokeWidth}px solid ${shape.strokeColor ?? "#000000"}`
+                              : (isSelected ? "2px solid #f9a8d4" : "none"),
+                            cursor: isDragging && isSelected ? "grabbing" : isSelected ? "move" : "grab",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            ...getShapeStyle(shape),
+                            outline: (isSelected || isMultiSelected) ? "2px solid #f9a8d4" : "none",
+                            cursor: isDragging && isSelected ? "grabbing" : (isSelected || isMultiSelected) ? "move" : "grab",
+                            opacity: isInGroup && !isSelected ? 0.8 : undefined,
+                          }}
+                        />
+                      )}
+                      {(isSelected || isMultiSelected) && !shape.locked && (
+                        <>
+                          {/* 모서리 핸들 */}
+                          <div
+                            className="resize-handle"
+                            data-handle="nw"
+                            style={{
+                              position: "absolute",
+                              top: "-4px",
+                              left: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nwse-resize",
+                            }}
+                          />
+                          <div
+                            className="resize-handle"
+                            data-handle="ne"
+                            style={{
+                              position: "absolute",
+                              top: "-4px",
+                              right: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nesw-resize",
+                            }}
+                          />
+                          <div
+                            className="resize-handle"
+                            data-handle="sw"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              left: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nesw-resize",
+                            }}
+                          />
+                          <div
+                            className="resize-handle"
+                            data-handle="se"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              right: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nwse-resize",
+                            }}
+                          />
+                          {/* 중간 핸들 */}
+                          <div
+                            className="resize-handle"
+                            data-handle="n"
+                            style={{
+                              position: "absolute",
+                              top: "-4px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ns-resize",
+                            }}
+                          />
+                          <div
+                            className="resize-handle"
+                            data-handle="s"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ns-resize",
+                            }}
+                          />
+                          <div
+                            className="resize-handle"
+                            data-handle="w"
+                            style={{
+                              position: "absolute",
+                              left: "-4px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ew-resize",
+                            }}
+                          />
+                          <div
+                            className="resize-handle"
+                            data-handle="e"
+                            style={{
+                              position: "absolute",
+                              right: "-4px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ew-resize",
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* 텍스트 렌더링 */}
+                {[...texts].sort((a, b) => a.zIndex - b.zIndex).map((text) => {
+                  const isSelected = selectedText?.id === text.id;
+                  const isMultiSelected = selectedTextIds.has(text.id);
+                  const isEditing = editingTextId === text.id;
+                  const isInGroup = groups.some(g => g.textIds.includes(text.id));
+                  
+                  if (isEditing) {
+                    return (
+                      <EditableText
+                        key={text.id}
+                        ref={textInputRef}
+                        text={text}
+                        onBlur={() => handleTextBlur(text.id)}
+                        onKeyDown={(e) => handleTextKeyDown(e, text.id)}
+                        onInput={() => handleTextInput(text.id)}
+                      />
+                    );
+                  }
+                  
+                  return (
+                    <div
+                      key={text.id}
+                      className="text-container"
+                      onMouseDown={(e) => handleTextMouseDown(e, text)}
+                      onDoubleClick={(e) => handleTextDoubleClick(e, text)}
+                      style={{
+                        position: "absolute",
+                        left: `${text.x}px`,
+                        top: `${text.y}px`,
+                        width: `${text.width}px`,
+                        height: `${text.height}px`,
+                        fontSize: `${text.fontSize}px`,
+                        color: text.color,
+                        fontFamily: text.fontFamily,
+                        fontWeight: text.fontWeight,
+                        fontStyle: text.fontStyle,
+                        textAlign: text.textAlign,
+                        cursor: isDraggingText && isSelected ? "grabbing" : (isSelected || isMultiSelected) ? "move" : "grab",
+                        border: (isSelected || isMultiSelected) ? "2px dashed #f9a8d4" : "none",
+                        padding: (isSelected || isMultiSelected) ? "2px" : "0",
+                        borderRadius: "2px",
+                        backgroundColor: (isSelected || isMultiSelected) ? "rgba(249, 168, 212, 0.1)" : "transparent",
+                        whiteSpace: "pre-wrap",
+                        wordWrap: "break-word",
+                        overflow: "hidden",
+                        boxSizing: "border-box",
+                        zIndex: text.zIndex,
+                        opacity: isInGroup && !isSelected ? 0.8 : undefined,
+                      }}
+                    >
+                      {text.text}
+                      {(isSelected || isMultiSelected) && !text.locked && (
+                        <>
+                          {/* 모서리 핸들 */}
+                          <div
+                            className="text-resize-handle"
+                            data-handle="nw"
+                            style={{
+                              position: "absolute",
+                              top: "-4px",
+                              left: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nwse-resize",
+                            }}
+                          />
+                          <div
+                            className="text-resize-handle"
+                            data-handle="ne"
+                            style={{
+                              position: "absolute",
+                              top: "-4px",
+                              right: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nesw-resize",
+                            }}
+                          />
+                          <div
+                            className="text-resize-handle"
+                            data-handle="sw"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              left: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nesw-resize",
+                            }}
+                          />
+                          <div
+                            className="text-resize-handle"
+                            data-handle="se"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              right: "-4px",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "nwse-resize",
+                            }}
+                          />
+                          {/* 중간 핸들 */}
+                          <div
+                            className="text-resize-handle"
+                            data-handle="n"
+                            style={{
+                              position: "absolute",
+                              top: "-4px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ns-resize",
+                            }}
+                          />
+                          <div
+                            className="text-resize-handle"
+                            data-handle="s"
+                            style={{
+                              position: "absolute",
+                              bottom: "-4px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ns-resize",
+                            }}
+                          />
+                          <div
+                            className="text-resize-handle"
+                            data-handle="w"
+                            style={{
+                              position: "absolute",
+                              left: "-4px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ew-resize",
+                            }}
+                          />
+                          <div
+                            className="text-resize-handle"
+                            data-handle="e"
+                            style={{
+                              position: "absolute",
+                              right: "-4px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "8px",
+                              height: "8px",
+                              backgroundColor: "#f9a8d4",
+                              border: "1px solid #000000",
+                              cursor: "ew-resize",
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 p-8 overflow-auto bg-black dark:bg-black">
+              <div
+                ref={canvasRef}
+                className="relative bg-white w-full h-full shadow-lg"
+                style={{ cursor: pendingShapeType ? "crosshair" : "default", minHeight: "600px" }}
+                onMouseMove={handleMouseMove}
+                onMouseDown={handleCanvasMouseDown}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={(e) => {
+                  if (isDrawing) {
+                    handleCanvasMouseUp(e);
+                  }
+                  handleMouseUp();
+                }}
+              >
             {/* 올가미 선택 박스 */}
             {selectionBox && isSelecting && (
               <div
@@ -3690,7 +4297,9 @@ function App() {
                 </div>
               );
             })}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3767,52 +4376,63 @@ function App() {
 
         {/* 코드 편집 창 */}
         <div className="flex-1 overflow-auto -mt-px relative">
-          {/* SyntaxHighlighter 오버레이 (하이라이팅 표시용) */}
-          <div 
-            className="absolute inset-0 pointer-events-none overflow-auto"
-            style={{ zIndex: 1 }}
-          >
-          <SyntaxHighlighter
-            language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
-            style={dracula}
-            customStyle={{
-              margin: 0,
-              padding: "1rem",
-              fontSize: "0.75rem",
-                backgroundColor: "transparent",
-              height: "100%",
-            }}
-            showLineNumbers={false}
-              PreTag="div"
-          >
-              {codeContent || (codeView === "xml" ? "<!-- 코드가 여기에 표시됩니다 -->" : codeView === "css" ? "/* 코드가 여기에 표시됩니다 */" : "// 코드가 여기에 표시됩니다")}
-          </SyntaxHighlighter>
-          </div>
-          {/* 편집 가능한 textarea */}
-          <textarea
-            value={codeContent}
-            onChange={(e) => handleCodeChange(e.target.value)}
-            onBlur={() => setIsCodeEditing(false)}
-            onScroll={(e) => {
-              const overlay = e.currentTarget.parentElement?.querySelector('.absolute') as HTMLElement;
-              if (overlay) {
-                overlay.scrollTop = e.currentTarget.scrollTop;
-                overlay.scrollLeft = e.currentTarget.scrollLeft;
-              }
-            }}
-            className="w-full h-full p-4 text-sm font-mono resize-none focus:outline-none relative"
-            style={{
-              backgroundColor: "transparent",
-              color: "transparent",
-              caretColor: "#f8f8f2",
-              fontSize: "0.75rem",
-              lineHeight: "1.5",
-              tabSize: 2,
-              zIndex: 2,
-            }}
-            spellCheck={false}
-            placeholder=""
-          />
+          {/* 선택된 파일이 있으면 Monaco Editor 표시, 없으면 기존 코드 뷰 */}
+          {selectedFile ? (
+            <div style={{ height: '100%' }}>
+              <ErrorBoundary fallback={<div className="text-white p-4">에디터를 로드할 수 없습니다</div>}>
+                <MonacoEditor />
+              </ErrorBoundary>
+            </div>
+          ) : (
+            <>
+              {/* SyntaxHighlighter 오버레이 (하이라이팅 표시용) */}
+              <div 
+                className="absolute inset-0 pointer-events-none overflow-auto"
+                style={{ zIndex: 1 }}
+              >
+              <SyntaxHighlighter
+                language={codeView === "xml" ? "xml" : codeView === "css" ? "css" : "tsx"}
+                style={dracula}
+                customStyle={{
+                  margin: 0,
+                  padding: "1rem",
+                  fontSize: "0.75rem",
+                    backgroundColor: "transparent",
+                  height: "100%",
+                }}
+                showLineNumbers={false}
+                  PreTag="div"
+              >
+                  {codeContent || (codeView === "xml" ? "<!-- 코드가 여기에 표시됩니다 -->" : codeView === "css" ? "/* 코드가 여기에 표시됩니다 */" : "// 코드가 여기에 표시됩니다")}
+              </SyntaxHighlighter>
+              </div>
+              {/* 편집 가능한 textarea */}
+              <textarea
+                value={codeContent}
+                onChange={(e) => handleCodeChange(e.target.value)}
+                onBlur={() => setIsCodeEditing(false)}
+                onScroll={(e) => {
+                  const overlay = e.currentTarget.parentElement?.querySelector('.absolute') as HTMLElement;
+                  if (overlay) {
+                    overlay.scrollTop = e.currentTarget.scrollTop;
+                    overlay.scrollLeft = e.currentTarget.scrollLeft;
+                  }
+                }}
+                className="w-full h-full p-4 text-sm font-mono resize-none focus:outline-none relative"
+                style={{
+                  backgroundColor: "transparent",
+                  color: "transparent",
+                  caretColor: "#f8f8f2",
+                  fontSize: "0.75rem",
+                  lineHeight: "1.5",
+                  tabSize: 2,
+                  zIndex: 2,
+                }}
+                spellCheck={false}
+                placeholder=""
+              />
+            </>
+          )}
         </div>
       </div>
     </div>
